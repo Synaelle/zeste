@@ -561,6 +561,10 @@ void GPU::MemoryTransfer() {
     impl->signal_interrupt(Service::GSP::InterruptId::PPF, delay);
 }
 
+void GPU::SetVBlankHook(std::function<void()> hook) {
+    vblank_hook = std::move(hook);
+}
+
 void GPU::VBlankCallback(std::uintptr_t user_data, s64 cycles_late) {
     // Signal to GSP that GPU interrupt has occurred
     impl->signal_interrupt(Service::GSP::InterruptId::PDC0, 0);
@@ -568,6 +572,10 @@ void GPU::VBlankCallback(std::uintptr_t user_data, s64 cycles_late) {
 
     // Present renderered frame.
     impl->renderer->SwapBuffers();
+
+    if (vblank_hook) {
+        vblank_hook();
+    }
 
     // Reschedule recurrent event
     impl->timing.ScheduleEvent(FRAME_TICKS - cycles_late, impl->vblank_event);

@@ -102,6 +102,11 @@ class GMainWindow : public QMainWindow {
     static const int max_recent_files_item = 10;
 
 public:
+    /// Zeste: --headless. No window ever appears on screen (Qt::WA_DontShowOnScreen), audio goes
+    /// to the null sink, dialogs are suppressed, the config file is not written and the process
+    /// exits when emulation stops. Set before the window is constructed.
+    static inline bool headless_mode = false;
+
     void filterBarSetChecked(bool state);
 #ifdef _WIN32
     void UpdateScrollBarStyle();
@@ -374,6 +379,7 @@ private:
     bool message_label_used_for_movie = false;
     /// Zeste: quit the application (with an exit code) when emulation stops (headless runs).
     bool headless_exit_on_stop = false;
+    int headless_exit_code = 0;
 
     MultiplayerState* multiplayer_state = nullptr;
 

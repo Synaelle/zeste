@@ -27,6 +27,8 @@ public:
     /// Zeste: set when hardware-accuracy options came from the command line; they are then not
     /// written back to the config file.
     static inline bool zeste_command_line_override = false;
+    /// Zeste: never write the config file (headless runs must not touch the user's settings).
+    static inline bool read_only = false;
 
     static const std::array<int, Settings::NativeButton::NumButtons> default_buttons;
     static const std::array<std::array<int, 5>, Settings::NativeAnalog::NumAnalogs> default_analogs;

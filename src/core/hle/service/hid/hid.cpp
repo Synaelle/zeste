@@ -18,6 +18,7 @@
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/service/hid/hid.h"
+#include "core/zeste_automation.h"
 #include "core/hle/service/hid/hid_spvr.h"
 #include "core/hle/service/hid/hid_user.h"
 #include "core/hle/service/ir/ir_rst.h"
@@ -240,6 +241,16 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         circle_pad_old_y.erase(circle_pad_old_y.begin());
         circle_pad_old_y.push_back(circle_pad_new_y);
 
+        // Zeste automation: scripted buttons and circle pad (--script / RPC).
+        if (Zeste::Automation::IsActive()) {
+            const auto& scripted = Zeste::Automation::GetInputOverride();
+            state.hex |= scripted.buttons;
+            if (scripted.stick_active) {
+                circle_pad_x = scripted.stick_x;
+                circle_pad_y = scripted.stick_y;
+            }
+        }
+
         system.Movie().HandlePadAndCircleStatus(state, circle_pad_x, circle_pad_y);
 
         const DirectionState direction = GetStickDirectionState(circle_pad_x, circle_pad_y);
@@ -288,6 +299,12 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         }
         if (!pressed && controller_touch_device) {
             std::tie(x, y, pressed) = controller_touch_device->GetStatus();
+        }
+        if (Zeste::Automation::IsActive() && Zeste::Automation::GetInputOverride().touch_active) {
+            const auto& scripted = Zeste::Automation::GetInputOverride();
+            x = static_cast<float>(scripted.touch_x) / Core::kScreenBottomWidth;
+            y = static_cast<float>(scripted.touch_y) / Core::kScreenBottomHeight;
+            pressed = true;
         }
         touch_entry.x = static_cast<u16>(x * Core::kScreenBottomWidth);
         touch_entry.y = static_cast<u16>(y * Core::kScreenBottomHeight);

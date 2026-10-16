@@ -53,6 +53,9 @@ public:
     /// Sets the function to call for signalling GSP interrupts.
     void SetInterruptHandler(Service::GSP::InterruptHandler handler);
 
+    /// Zeste: called at every emulated VBlank, after the frame was presented (automation).
+    void SetVBlankHook(std::function<void()> hook);
+
     /// Notify rasterizer that any caches of the specified region should be flushed to Switch memory
     void FlushRegion(PAddr addr, u32 size);
 
@@ -122,6 +125,7 @@ private:
     friend class RightEyeDisabler;
     struct Impl;
     std::unique_ptr<Impl> impl;
+    std::function<void()> vblank_hook;
 
     /// Translates the address of a GPU buffer as the GSP module does, or returns std::nullopt when
     /// the buffer is not in GPU visible memory.

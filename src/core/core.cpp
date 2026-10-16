@@ -62,6 +62,7 @@
 #include "video_core/custom_textures/custom_tex_manager.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
+#include "core/zeste_automation.h"
 #include "core/zeste_core.h"
 
 namespace Core {
@@ -683,6 +684,7 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window,
     gpu->SetInterruptHandler([gsp](Service::GSP::InterruptId interrupt_id, u64 wait_delay_ns) {
         gsp->SignalInterrupt(interrupt_id, wait_delay_ns);
     });
+    gpu->SetVBlankHook([this] { Zeste::Automation::OnVBlank(*this); });
 
     auto plg_ldr = Service::PLGLDR::GetService(*this);
     if (plg_ldr) {
@@ -1039,6 +1041,7 @@ void System::serialize(Archive& ar, const unsigned int file_version) {
         gpu->SetInterruptHandler([gsp](Service::GSP::InterruptId interrupt_id, u64 wait_delay_ns) {
             gsp->SignalInterrupt(interrupt_id, wait_delay_ns);
         });
+        gpu->SetVBlankHook([this] { Zeste::Automation::OnVBlank(*this); });
 
         // Apply per program settings and switch the shader cache to the title running when the
         // savestate was created.

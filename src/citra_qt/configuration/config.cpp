@@ -1544,5 +1544,8 @@ void QtConfig::Reload() {
 }
 
 void QtConfig::Save() {
+    if (read_only) {
+        return;
+    }
     SaveValues();
 }
