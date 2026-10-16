@@ -10,6 +10,7 @@
 #include "common/zeste_report.h"
 #include "core/memory.h"
 #include "video_core/pica/regs_internal.h"
+#include "video_core/pica/shader_setup.h"
 #include "video_core/pica/zeste_pica.h"
 
 namespace Pica::Zeste {
@@ -448,6 +449,62 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
                 "in the fixed-point rasterizer) | {}",
                 b.max_x - b.min_x, b.max_y - b.min_y, Where(where));
     }
+}
+
+u32 VertexShaderLength(const RegsInternal& regs, const ShaderSetup& vs) {
+    const auto& code = vs.GetProgramCode();
+    constexpr u32 OpcodeEnd = 0x22;
+    u32 length = 0;
+    for (u32 pc = regs.vs.main_offset; pc < code.size(); ++pc) {
+        ++length;
+        if ((code[pc] >> 26) == OpcodeEnd) {
+            break;
+        }
+    }
+    return std::max(length, 1u);
+}
+
+double DrawCostCycles(const RegsInternal& regs, const ShaderSetup& vs, u32 num_vertices) {
+    return CyclesPerDraw + static_cast<double>(num_vertices) * VertexShaderLength(regs, vs) *
+                               CyclesPerShaderInstructionPerVertex;
+}
+
+double TriangleCostCycles(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
+                          const OutputVertex& v2) {
+    const std::array<ClipVertex, 3> in = {{
+        {v0.pos.x.ToFloat32(), v0.pos.y.ToFloat32(), v0.pos.z.ToFloat32(), v0.pos.w.ToFloat32()},
+        {v1.pos.x.ToFloat32(), v1.pos.y.ToFloat32(), v1.pos.z.ToFloat32(), v1.pos.w.ToFloat32()},
+        {v2.pos.x.ToFloat32(), v2.pos.y.ToFloat32(), v2.pos.z.ToFloat32(), v2.pos.w.ToFloat32()},
+    }};
+    const auto clipped = ClipNear(in);
+    if (clipped.size() < 3) {
+        return CyclesPerTriangle * 0.2; // Rejected early
+    }
+    const auto& r = regs.rasterizer;
+    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
+    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
+    double area = 0.0;
+    float px = 0, py = 0, fx = 0, fy = 0;
+    for (std::size_t i = 0; i < clipped.size(); ++i) {
+        const float x = (clipped[i].x / clipped[i].w + 1.0f) * half_x;
+        const float y = (clipped[i].y / clipped[i].w + 1.0f) * half_y;
+        if (i == 0) {
+            fx = x;
+            fy = y;
+        } else {
+            area += static_cast<double>(px) * y - static_cast<double>(x) * py;
+        }
+        px = x;
+        py = y;
+    }
+    area += static_cast<double>(px) * fy - static_cast<double>(fx) * py;
+    area = std::abs(area) * 0.5;
+    const auto& fb = regs.framebuffer.framebuffer;
+    const double fb_area = static_cast<double>(fb.GetWidth()) * fb.GetHeight();
+    if (!std::isfinite(area)) {
+        area = fb_area;
+    }
+    return CyclesPerTriangle + std::min(area, fb_area) * CyclesPerFragment;
 }
 
 bool FixedPointRasterAccepts(const RegsInternal& regs, const OutputVertex& v0,

@@ -13,6 +13,7 @@
 #include "core/hle/kernel/handle_table.h"
 #include "core/hle/kernel/ipc_debugger/recorder.h"
 #include "core/hle/kernel/kernel.h"
+#include "core/zeste_timing.h"
 #include "core/hle/kernel/memory.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/kernel/resource_limit.h"
@@ -183,6 +184,8 @@ void KernelSystem::UpdateCPUAndMemoryState(u64 title_id, MemoryMode memory_mode,
                                            New3dsHwCapabilities n3ds_hw_cap) {
     if (Settings::values.is_new_3ds) {
         SetRunning804MHz(n3ds_hw_cap.enable_804MHz_cpu);
+        // Zeste CPU speed model: titles flagged for 804 MHz start fast, others at 268 MHz.
+        Zeste::Timing::SetCpuSpeedup(timing, n3ds_hw_cap.enable_804MHz_cpu);
     }
 
     u32 tid_high = static_cast<u32>(title_id >> 32);

@@ -14,6 +14,8 @@
 #include "core/file_sys/errors.h"
 #include "core/file_sys/path_parser.h"
 
+#include "core/zeste_timing.h"
+
 SERIALIZE_EXPORT_IMPL(FileSys::SDMCArchive)
 SERIALIZE_EXPORT_IMPL(FileSys::ArchiveFactory_SDMC)
 
@@ -22,6 +24,9 @@ namespace FileSys {
 class SDMCDelayGenerator : public DelayGenerator {
 public:
     u64 GetReadDelayNs(std::size_t length) override {
+        if (Zeste::Timing::SdEnabled()) {
+            return Zeste::Timing::SdReadNs(length);
+        }
         // This is the delay measured on O3DS and O2DS with
         // https://gist.github.com/B3n30/ac40eac20603f519ff106107f4ac9182
         // from the results the average of each length was taken.
@@ -33,6 +38,9 @@ public:
     }
 
     u64 GetOpenDelayNs() override {
+        if (Zeste::Timing::SdEnabled()) {
+            return Zeste::Timing::SdOpenNs();
+        }
         // This is the delay measured on O3DS and O2DS with
         // https://gist.github.com/FearlessTobi/c37e143c314789251f98f2c45cd706d2
         // from the results the average of each length was taken.
@@ -96,6 +104,7 @@ ResultVal<std::unique_ptr<FileBackend>> SDMCArchive::OpenFileBase(const Path& pa
         } else {
             // Create the file
             FileUtil::CreateEmptyFile(full_path);
+            Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdCreateNs());
         }
         break;
     case PathParser::FileFound:
@@ -112,6 +121,17 @@ ResultVal<std::unique_ptr<FileBackend>> SDMCArchive::OpenFileBase(const Path& pa
     return std::make_unique<DiskFile>(std::move(file), mode, std::move(delay_generator));
 }
 
+namespace {
+/// Zeste: host directory containing `full_path` (deletion tracking for remove_all reports).
+std::string ZesteParentDir(std::string full_path) {
+    while (!full_path.empty() && (full_path.back() == '/' || full_path.back() == '\\')) {
+        full_path.pop_back();
+    }
+    const auto slash = full_path.find_last_of("/\\");
+    return slash == std::string::npos ? std::string{} : full_path.substr(0, slash);
+}
+} // Anonymous namespace
+
 Result SDMCArchive::DeleteFile(const Path& path) const {
     const PathParser path_parser(path);
 
@@ -121,6 +141,8 @@ Result SDMCArchive::DeleteFile(const Path& path) const {
     }
 
     const auto full_path = path_parser.BuildHostPath(mount_point);
+    Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdDeleteNs());
+    Zeste::Timing::OnSdDelete(ZesteParentDir(full_path));
 
     switch (path_parser.GetHostStatus(mount_point)) {
     case PathParser::InvalidMountPoint:
@@ -188,6 +210,8 @@ static Result DeleteDirectoryHelper(const Path& path, const std::string& mount_p
         return ResultInvalidOpenFlags;
 
     const auto full_path = path_parser.BuildHostPath(mount_point);
+    Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdDeleteNs());
+    Zeste::Timing::OnSdDelete(ZesteParentDir(full_path));
 
     switch (path_parser.GetHostStatus(mount_point)) {
     case PathParser::InvalidMountPoint:
@@ -231,6 +255,7 @@ Result SDMCArchive::CreateFile(const FileSys::Path& path, u64 size, u32 attribut
     }
 
     const auto full_path = path_parser.BuildHostPath(mount_point);
+    Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdCreateNs());
 
     switch (path_parser.GetHostStatus(mount_point)) {
     case PathParser::InvalidMountPoint:
@@ -276,6 +301,7 @@ Result SDMCArchive::CreateDirectory(const Path& path, u32 attributes) const {
     }
 
     const auto full_path = path_parser.BuildHostPath(mount_point);
+    Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdCreateNs());
 
     switch (path_parser.GetHostStatus(mount_point)) {
     case PathParser::InvalidMountPoint:

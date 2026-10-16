@@ -29,6 +29,7 @@
 #include "core/hle/service/am/am.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/fs/fs_user.h"
+#include "core/zeste_timing.h"
 #include "core/hw/aes/key.h"
 #include "core/hw/unique_data.h"
 
@@ -51,6 +52,15 @@ void FS_USER::Initialize(Kernel::HLERequestContext& ctx) {
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(ResultSuccess);
 }
+
+namespace {
+/// Zeste SD latency: make the client wait for SD operations done synchronously.
+void ZesteSdSleep(Kernel::HLERequestContext& ctx) {
+    if (const u64 ns = Zeste::Timing::TakeSdDelayNs(); ns != 0) {
+        ctx.SleepClientThread("zeste::sd", std::chrono::nanoseconds{ns}, nullptr);
+    }
+}
+} // Anonymous namespace
 
 void FS_USER::OpenFile(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
@@ -264,6 +274,7 @@ void FS_USER::DeleteFile(Kernel::HLERequestContext& ctx) {
     if (!archives.ArchiveIsSlow(archive_handle) && !Settings::values.async_fs_operations) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(archives.DeleteFileFromArchive(archive_handle, file_path));
+        ZesteSdSleep(ctx);
         return;
     }
 
@@ -282,7 +293,7 @@ void FS_USER::DeleteFile(Kernel::HLERequestContext& ctx) {
         [this, async_data](Kernel::HLERequestContext& ctx) {
             async_data->res =
                 archives.DeleteFileFromArchive(async_data->archive_handle, async_data->file_path);
-            return 0;
+            return static_cast<s64>(Zeste::Timing::TakeSdDelayNs());
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             IPC::RequestBuilder rb(ctx, 1, 0);
@@ -369,6 +380,7 @@ void FS_USER::DeleteDirectory(Kernel::HLERequestContext& ctx) {
     if (!archives.ArchiveIsSlow(archive_handle) && !Settings::values.async_fs_operations) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(archives.DeleteDirectoryFromArchive(archive_handle, dir_path));
+        ZesteSdSleep(ctx);
         return;
     }
 
@@ -387,7 +399,7 @@ void FS_USER::DeleteDirectory(Kernel::HLERequestContext& ctx) {
         [this, async_data](Kernel::HLERequestContext& ctx) {
             async_data->res = archives.DeleteDirectoryFromArchive(async_data->archive_handle,
                                                                   async_data->dir_path);
-            return 0;
+            return static_cast<s64>(Zeste::Timing::TakeSdDelayNs());
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             IPC::RequestBuilder rb(ctx, 1, 0);
@@ -414,6 +426,7 @@ void FS_USER::DeleteDirectoryRecursively(Kernel::HLERequestContext& ctx) {
     if (!archives.ArchiveIsSlow(archive_handle) && !Settings::values.async_fs_operations) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(archives.DeleteDirectoryRecursivelyFromArchive(archive_handle, dir_path));
+        ZesteSdSleep(ctx);
         return;
     }
 
@@ -432,7 +445,7 @@ void FS_USER::DeleteDirectoryRecursively(Kernel::HLERequestContext& ctx) {
         [this, async_data](Kernel::HLERequestContext& ctx) {
             async_data->res = archives.DeleteDirectoryRecursivelyFromArchive(
                 async_data->archive_handle, async_data->dir_path);
-            return 0;
+            return static_cast<s64>(Zeste::Timing::TakeSdDelayNs());
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             IPC::RequestBuilder rb(ctx, 1, 0);
@@ -461,6 +474,7 @@ void FS_USER::CreateFile(Kernel::HLERequestContext& ctx) {
     if (!archives.ArchiveIsSlow(archive_handle) && !Settings::values.async_fs_operations) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(archives.CreateFileInArchive(archive_handle, file_path, file_size, attributes));
+        ZesteSdSleep(ctx);
         return;
     }
 
@@ -484,7 +498,7 @@ void FS_USER::CreateFile(Kernel::HLERequestContext& ctx) {
             async_data->res =
                 archives.CreateFileInArchive(async_data->archive_handle, async_data->file_path,
                                              async_data->file_size, async_data->attributes);
-            return 0;
+            return static_cast<s64>(Zeste::Timing::TakeSdDelayNs());
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             IPC::RequestBuilder rb(ctx, 1, 0);
@@ -510,6 +524,7 @@ void FS_USER::CreateDirectory(Kernel::HLERequestContext& ctx) {
     if (!archives.ArchiveIsSlow(archive_handle) && !Settings::values.async_fs_operations) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(archives.CreateDirectoryFromArchive(archive_handle, dir_path, attributes));
+        ZesteSdSleep(ctx);
         return;
     }
 
@@ -530,7 +545,7 @@ void FS_USER::CreateDirectory(Kernel::HLERequestContext& ctx) {
         [this, async_data](Kernel::HLERequestContext& ctx) {
             async_data->res = archives.CreateDirectoryFromArchive(
                 async_data->archive_handle, async_data->dir_path, async_data->attributes);
-            return 0;
+            return static_cast<s64>(Zeste::Timing::TakeSdDelayNs());
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             IPC::RequestBuilder rb(ctx, 1, 0);

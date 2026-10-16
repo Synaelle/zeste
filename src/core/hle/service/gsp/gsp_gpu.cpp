@@ -681,7 +681,9 @@ void GSP_GPU::SignalInterruptForThread(InterruptId interrupt_id, u32 thread_id, 
         perf_recorder.UpdateTime(interrupt_id, wait_delay_ns);
     }
 
-    if (Settings::values.simulate_3ds_gpu_timings.GetValue()) {
+    if (Settings::values.zeste_pica_timing.GetValue()) {
+        // Zeste PICA timing: deliver P3D/PSC/PPF after the modelled GPU time, nothing added.
+    } else if (Settings::values.simulate_3ds_gpu_timings.GetValue()) {
 
         if (delay_texture_copy_completion) {
             wait_delay_ns += (interrupt_id == InterruptId::PPF)
