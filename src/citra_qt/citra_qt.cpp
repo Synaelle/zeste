@@ -444,6 +444,21 @@ GMainWindow::GMainWindow(Core::System& system_)
             Zeste::Automation::LoadScriptText("@" + frame + " quit 0");
             continue;
         }
+        if (args[i] == QStringLiteral("--renderer") && i + 1 < args.size()) {
+            const QString api = args[++i].toLower();
+            if (api == QStringLiteral("software")) {
+                Settings::values.graphics_api = Settings::GraphicsAPI::Software;
+            } else if (api == QStringLiteral("opengl")) {
+                Settings::values.graphics_api = Settings::GraphicsAPI::OpenGL;
+            } else if (api == QStringLiteral("vulkan")) {
+                Settings::values.graphics_api = Settings::GraphicsAPI::Vulkan;
+            } else {
+                ShowCommandOutput("Zeste", "Unknown renderer: " + api.toStdString());
+                exit(1);
+            }
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
         if (args[i] == QStringLiteral("--rpc")) {
             Settings::values.enable_rpc_server = true;
             QtConfig::zeste_command_line_override = true;
@@ -462,6 +477,12 @@ GMainWindow::GMainWindow(Core::System& system_)
         }
     }
 
+    if (QtConfig::zeste_command_line_override) {
+        // Settings given on the command line apply to this run only: never write them back.
+        QtConfig::read_only = true;
+        LOG_INFO(Frontend, "Zeste: settings overridden on the command line; the config file "
+                           "will not be written during this session");
+    }
     if (headless_mode) {
         if (game_path.isEmpty()) {
             std::cerr << "--headless needs an application to boot" << std::endl;

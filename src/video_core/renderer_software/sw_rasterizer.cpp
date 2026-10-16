@@ -5,11 +5,14 @@
 #include <boost/container/static_vector.hpp>
 #include "common/logging/log.h"
 #include "common/microprofile.h"
+#include "common/settings.h"
+#include "common/zeste_report.h"
 #include "common/quaternion.h"
 #include "common/vector_math.h"
 #include "core/memory.h"
 #include "video_core/pica/output_vertex.h"
 #include "video_core/pica/pica_core.h"
+#include "video_core/pica/zeste_pica.h"
 #include "video_core/renderer_software/sw_framebuffer.h"
 #include "video_core/renderer_software/sw_lighting.h"
 #include "video_core/renderer_software/sw_proctex.h"
@@ -114,6 +117,17 @@ void RasterizerSoftware::AddTriangle(const Pica::OutputVertex& v0, const Pica::O
      * fixed 6 clipping planes, the maximum number of vertices of the clipped polygon is 3 + 6 = 9.
      **/
     static constexpr std::size_t MAX_VERTICES = 9;
+
+    // Zeste hardware-like clipping: the PICA200 only clips against the near plane and rasterizes
+    // in fixed point, so primitives whose near-clipped screen coordinates leave the fixed-point
+    // range are lost on hardware. Drop them here too (x/y are still clipped in floating point).
+    if (Settings::values.zeste_fixed_point_raster.GetValue() &&
+        !Pica::Zeste::FixedPointRasterAccepts(regs, v0, v1, v2)) [[unlikely]] {
+        ::Zeste::Report(::Zeste::Category::PicaVertex, "sw-fixed-point-drop",
+                        "software renderer dropped a primitive outside the fixed-point range "
+                        "(hardware-like clipping)");
+        return;
+    }
 
     boost::container::static_vector<Vertex, MAX_VERTICES> buffer_a = {v0, v1, v2};
     boost::container::static_vector<Vertex, MAX_VERTICES> buffer_b;

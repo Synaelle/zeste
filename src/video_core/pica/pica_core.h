@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <string>
 #include "common/common_types.h"
 #include "core/hle/service/gsp/gsp_interrupt.h"
 #include "video_core/pica/dirty_regs.h"
@@ -120,8 +121,18 @@ public:
 
     void ProcessCmdList(PAddr list, u32 size, bool ignore_list);
 
+    /// Zeste: records every command list of the next emulated frame (register writes with their
+    /// command-list offset, and the full register state at every draw) into a text file.
+    void ZesteArmCommandListDump(const std::string& path);
+
+    /// Zeste: called at every VBlank (frame boundary for draw numbering and dumps).
+    void ZesteOnVBlank();
+
 private:
     void InitializeRegs();
+
+    void ZesteRecordWrite(u32 id, u32 value, u32 mask);
+    void ZesteRecordDraw(bool is_indexed);
 
     void HandleSpecialRegBatch(u32 id, const u32* values, u32 count);
 
@@ -370,6 +381,17 @@ public:
     DelayGenerator delay_generator{};
 
 private:
+    struct ZesteState {
+        bool strict = false;    ///< Strict PICA checks active for the current draw
+        u32 draw_index = 0;     ///< Draws since the last VBlank
+        u32 draw_cmdlist = 0;   ///< Command list address of the current draw
+        u32 draw_offset = 0;    ///< Offset of the draw command in that list
+        bool dump_armed = false;
+        bool dump_recording = false;
+        std::string dump_path;
+        std::string dump_text;
+    } zeste;
+
     friend class boost::serialization::access;
     template <class Archive>
     void serialize(Archive& ar, const u32 file_version) {

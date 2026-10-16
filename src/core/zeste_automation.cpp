@@ -245,8 +245,9 @@ void Execute(Core::System& system, const Command& command) {
                      static_cast<u32>(ParseNumber(args[2])), args[3]);
     } else if (verb == "dump-vram") {
         DumpPhysical(system, Memory::VRAM_PADDR, Memory::VRAM_SIZE, args[1]);
-    } else if (verb == "dump-cmdlist" || verb == "home" || verb == "sleep" || verb == "close" ||
-               verb == "rosalina") {
+    } else if (verb == "dump-cmdlist") {
+        system.GPU().PicaCore().ZesteArmCommandListDump(args[1]);
+    } else if (verb == "home" || verb == "sleep" || verb == "close" || verb == "rosalina") {
         LOG_WARNING(Zeste, "automation: '{}' is not available in this build yet", verb);
     } else if (verb == "report") {
         Zeste::WriteReport(args.size() > 1 ? args[1] : Zeste::DefaultReportBasePath(),

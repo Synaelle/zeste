@@ -573,6 +573,7 @@ void GPU::VBlankCallback(std::uintptr_t user_data, s64 cycles_late) {
     // Present renderered frame.
     impl->renderer->SwapBuffers();
 
+    impl->pica.ZesteOnVBlank();
     if (vblank_hook) {
         vblank_hook();
     }
