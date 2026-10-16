@@ -11,6 +11,7 @@
 #include "common/zeste_report.h"
 #include "core/core.h"
 #include "core/memory.h"
+#include "core/zeste_cache.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/pica/pica_core.h"
 #include "video_core/pica/vertex_loader.h"
@@ -272,6 +273,7 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
         ::Zeste::ReportF(::Zeste::Category::PicaState, fmt::format("cmdlist@{:08X}", list),
                          "command list 0x{:08X} ({} bytes) is outside VRAM/FCRAM", list, size);
     }
+    ::Zeste::Cache::CheckDeviceRead(memory, list, size, "GPU command list");
     // Zeste command-list dumps need every register write individually (no batched fast path).
     const bool zeste_per_write = zeste.dump_recording;
     if (zeste_per_write) [[unlikely]] {
@@ -1084,6 +1086,16 @@ void PicaCore::DrawArrays(bool is_indexed) {
     }
     if (zeste.dump_recording) [[unlikely]] {
         ZesteRecordDraw(is_indexed);
+    }
+    if (::Zeste::Cache::Enabled()) [[unlikely]] {
+        std::vector<Zeste::DrawRange> reads, writes;
+        Zeste::CollectDrawRanges(regs.internal, memory, is_indexed, reads, writes);
+        for (const auto& r : reads) {
+            ::Zeste::Cache::CheckDeviceRead(memory, r.addr, r.size, r.what);
+        }
+        for (const auto& w : writes) {
+            ::Zeste::Cache::OnDeviceWrite(memory, w.addr, w.size);
+        }
     }
 
     // Track vertex in the debug recorder.

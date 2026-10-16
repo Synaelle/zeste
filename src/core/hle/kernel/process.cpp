@@ -22,6 +22,7 @@
 #include "core/hle/kernel/errors.h"
 #include "core/hle/kernel/memory.h"
 #include "core/hle/kernel/process.h"
+#include "core/zeste_cache.h"
 #include "core/hle/kernel/resource_limit.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/kernel/vm_manager.h"
@@ -412,6 +413,7 @@ Result Process::LinearAllocate(VAddr* out_addr, VAddr target, u32 size, VMAPermi
     auto backing_memory = kernel.memory.GetFCRAMRef(physical_offset);
 
     std::fill(backing_memory.GetPtr(), backing_memory.GetPtr() + size, 0);
+    Zeste::Cache::OnSystemWrite(kernel.memory, Memory::FCRAM_PADDR + physical_offset, size);
     auto vma = vm_manager.MapBackingMemory(target, backing_memory, size, MemoryState::Continuous);
     ASSERT(vma.Succeeded());
     vm_manager.Reprotect(vma.Unwrap(), perms);

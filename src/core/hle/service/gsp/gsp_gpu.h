@@ -288,7 +288,8 @@ private:
     /// Helper for stubbed commands.
     void Unsupported(Kernel::HLERequestContext& ctx);
 
-    void DoCacheOperation(Kernel::HLERequestContext& ctx, bool allow_vram);
+    enum class CacheOp { Flush, Invalidate, Store };
+    void DoCacheOperation(Kernel::HLERequestContext& ctx, bool allow_vram, CacheOp op);
 
     void DoResetGpuCore();
 

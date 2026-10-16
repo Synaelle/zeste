@@ -37,6 +37,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     core.cpp
     core.h
     zeste_automation.cpp
+    zeste_cache.cpp
+    zeste_cache.h
     zeste_automation.h
     zeste_core.cpp
     zeste_core.h

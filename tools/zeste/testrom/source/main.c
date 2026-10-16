@@ -8,7 +8,7 @@
 //   A      : C3D_TexBind(1, NULL) + draw         (null texture -> data abort on hardware)
 //   B      : recursive stack overflow            (fault below the main stack)
 //   X      : write to NULL with threadOnException installed (handler must run)
-//   Y      : unflushed vertex buffer             (CPU data cache detection)
+//   Y      : unflushed transfer source           (CPU data cache detection)
 //   L      : unlocked linearAlloc from 4 threads (race exposure)
 //   R      : oversized near-plane triangle + NaN vertex (strict PICA)
 //   START  : exit
@@ -189,9 +189,21 @@ static void test_null_write_with_handler(void) {
 }
 
 static void test_unflushed(void) {
-    say("[Y] drawing from a vertex buffer that was never flushed");
-    draw_vertices(small_tri, 3, false, false);
-    say("[Y] done (expect a cache report)");
+    // citro3d flushes the whole linear heap in C3D_FrameEnd, so buffers used by draws inside a
+    // frame are always flushed. A transfer started outside a frame is not: fill a buffer with
+    // the CPU and let the transfer engine read it without GSPGPU_FlushDataCache.
+    say("[Y] CPU-filled buffer copied by the transfer engine without a flush");
+    const u32 size = 64 * 64 * 4;
+    u32* src = linearAlloc(size);
+    u32* dst = linearAlloc(size);
+    for (u32 i = 0; i < size / 4; i++)
+        src[i] = 0xFF00FF00u ^ i;
+    GX_TextureCopy(src, GX_BUFFER_DIM(0, 0), dst, GX_BUFFER_DIM(0, 0), size, GX_TRANSFER_RAW_COPY(1));
+    gspWaitForPPF();
+    GSPGPU_InvalidateDataCache(dst, size);
+    say("[Y] done: dst[1]=0x%08lX (expect a cache report)", dst[1]);
+    linearFree(src);
+    linearFree(dst);
 }
 
 #define RACE_THREADS 4

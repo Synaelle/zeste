@@ -26,6 +26,7 @@
 #include "core/hle/kernel/process.h"
 #include "core/hle/service/plgldr/plgldr.h"
 #include "core/memory.h"
+#include "core/zeste_cache.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -652,6 +653,11 @@ T MemorySystem::Read(const std::shared_ptr<PageTable>& page_table, const VAddr v
     }
     [[likely]] case PageType::RasterizerCachedMemory: {
         RasterizerFlushVirtualRegion(vaddr, read_size, FlushMode::Flush);
+        if (Zeste::Cache::Enabled()) [[unlikely]] {
+            if (const auto paddr = Zeste::Cache::LinearToPhysical(vaddr)) {
+                Zeste::Cache::CheckCpuRead(*paddr, read_size);
+            }
+        }
 
         ReadType value;
         std::memcpy(&value, GetPointerForRasterizerCache(vaddr), read_size);
@@ -1143,7 +1149,14 @@ bool MemorySystem::WriteExclusive64(const VAddr addr, const u64 data, const u64 
 
 void MemorySystem::WriteBlock(const Kernel::Process& process, const VAddr dest_addr,
                               const void* src_buffer, const std::size_t size) {
-    return impl->WriteBlockImpl<false>(process, dest_addr, src_buffer, size);
+    impl->WriteBlockImpl<false>(process, dest_addr, src_buffer, size);
+    // Zeste: writes by services/kernel (file reads, IPC buffers) do not go through the
+    // application's data cache.
+    if (Zeste::Cache::Enabled()) [[unlikely]] {
+        if (const auto paddr = Zeste::Cache::LinearToPhysical(dest_addr)) {
+            Zeste::Cache::OnSystemWrite(*this, *paddr, static_cast<u32>(size));
+        }
+    }
 }
 
 void MemorySystem::WriteBlock(const VAddr dest_addr, const void* src_buffer,
