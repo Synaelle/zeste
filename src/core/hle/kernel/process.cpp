@@ -382,7 +382,9 @@ Result Process::LinearAllocate(VAddr* out_addr, VAddr target, u32 size, VMAPermi
     LOG_DEBUG(Kernel, "Allocate linear heap target={:08X}, size={:08X}", target, size);
     u32 physical_offset;
     if (target == 0) {
-        auto offset = memory_region->LinearAllocate(size);
+        // Zeste hardware-like layout: the linear heap comes from the top of the region.
+        auto offset = memory_region->zeste_hw_layout ? memory_region->RLinearAllocate(size)
+                                                     : memory_region->LinearAllocate(size);
         if (!offset) {
             LOG_ERROR(Kernel, "Not enough space");
             return ResultOutOfHeapMemory;

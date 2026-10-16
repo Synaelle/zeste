@@ -57,6 +57,8 @@ void KernelSystem::MemoryInit(MemoryMode memory_mode, u64 override_init_time) {
     // We must've allocated the entire FCRAM by the end
     ASSERT(base == (is_new_3ds ? Memory::FCRAM_N3DS_SIZE : Memory::FCRAM_SIZE));
 
+    memory_regions[0]->zeste_hw_layout = Settings::values.zeste_hw_memory_layout.GetValue();
+
     config_mem_handler = std::make_shared<ConfigMem::Handler>();
     auto& config_mem = config_mem_handler->GetConfigMem();
     config_mem.app_mem_type = static_cast<u8>(memory_mode);
@@ -195,6 +197,25 @@ MemoryRegionInfo::IntervalSet MemoryRegionInfo::HeapAllocate(u32 size) {
 
     IntervalSet result;
     u32 rest = size;
+
+    if (zeste_hw_layout) {
+        // Zeste: allocate from the lower address (see zeste_hw_layout).
+        for (auto iter = free_blocks.begin(); iter != free_blocks.end(); ++iter) {
+            if (iter->upper() - iter->lower() >= rest) {
+                result += Interval(iter->lower(), iter->lower() + rest);
+                rest = 0;
+                break;
+            }
+            result += *iter;
+            rest -= iter->upper() - iter->lower();
+        }
+        if (rest != 0) {
+            return {};
+        }
+        free_blocks -= result;
+        used += size;
+        return result;
+    }
 
     // Try allocating from the higher address
     for (auto iter = free_blocks.rbegin(); iter != free_blocks.rend(); ++iter) {

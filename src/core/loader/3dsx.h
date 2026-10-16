@@ -34,6 +34,10 @@ public:
 
     ResultStatus Load(std::shared_ptr<Kernel::Process>& process) override;
 
+    /// Zeste hardware-like layout: on a New 3DS, homebrew launched from the Homebrew Launcher
+    /// runs in the 124 MB mode (osGetMemRegionSize(MEMREGION_APPLICATION) reports 124 MB).
+    std::pair<std::optional<Kernel::MemoryMode>, ResultStatus> LoadKernelMemoryMode() override;
+
     ResultStatus ReadIcon(std::vector<u8>& buffer, bool prefer_update_icon) override;
 
     ResultStatus ReadRomFS(std::shared_ptr<FileSys::RomFSReader>& romfs_file) override;
