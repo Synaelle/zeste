@@ -19,6 +19,7 @@
 #include "core/hle/service/am/am.h"
 #include "core/hle/service/apt/applet_manager.h"
 #include "core/hle/service/apt/apt.h"
+#include "core/zeste_system_events.h"
 #include "core/hle/service/apt/apt_a.h"
 #include "core/hle/service/apt/apt_s.h"
 #include "core/hle/service/apt/apt_u.h"
@@ -1002,6 +1003,7 @@ void Module::APTInterface::ReplySleepQuery(Kernel::HLERequestContext& ctx) {
 
     LOG_WARNING(Service_APT, "(STUBBED) called, from_app_id={:08X}, reply_value={:08X}",
                 from_app_id, reply_value);
+    Zeste::SystemEvents::OnSleepQueryReply(static_cast<u32>(reply_value));
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(ResultSuccess);

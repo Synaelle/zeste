@@ -193,6 +193,11 @@ private:
 class GSP_GPU final : public ServiceFramework<GSP_GPU, SessionData> {
 public:
     explicit GSP_GPU(Core::System& system);
+
+    /// Zeste: true when some thread holds the GPU right.
+    bool ZesteIsGpuRightHeld() const {
+        return thread_id_with_rights != std::numeric_limits<u32>::max();
+    }
     ~GSP_GPU() = default;
 
     void ClientDisconnected(std::shared_ptr<Kernel::ServerSession> server_session) override;

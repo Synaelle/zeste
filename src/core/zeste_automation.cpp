@@ -20,6 +20,7 @@
 #include "core/memory.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_core.h"
+#include "core/zeste_system_events.h"
 #include "video_core/gpu.h"
 #include "video_core/pica/pica_core.h"
 #include "video_core/rasterizer_interface.h"
@@ -248,7 +249,7 @@ void Execute(Core::System& system, const Command& command) {
     } else if (verb == "dump-cmdlist") {
         system.GPU().PicaCore().ZesteArmCommandListDump(args[1]);
     } else if (verb == "home" || verb == "sleep" || verb == "close" || verb == "rosalina") {
-        LOG_WARNING(Zeste, "automation: '{}' is not available in this build yet", verb);
+        SystemEvents::Start(system, verb, args.size() > 1 ? ParseNumber(args[1], 0) : 0);
     } else if (verb == "report") {
         Zeste::WriteReport(args.size() > 1 ? args[1] : Zeste::DefaultReportBasePath(),
                            "on request");
@@ -351,6 +352,7 @@ void OnVBlank(Core::System& system) {
     for (const auto& command : due) {
         Execute(system, command);
     }
+    SystemEvents::OnVBlank(system);
 
     // Expire timed inputs and rebuild the override.
     std::erase_if(s.held, [frame](const HeldInput& held) { return held.until_frame <= frame; });
@@ -358,6 +360,7 @@ void OnVBlank(Core::System& system) {
     for (const auto& held : s.held) {
         buttons |= held.buttons;
     }
+    buttons |= SystemEvents::ForcedButtons();
     s.input.buttons = buttons;
     if (s.input.touch_active && s.touch_until <= frame) {
         s.input.touch_active = false;

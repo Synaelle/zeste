@@ -315,6 +315,22 @@ public:
     ResultVal<Notification> InquireNotification(AppletId app_id);
     Result SendNotification(Notification notification);
 
+    /// Zeste: true while the application is suspended in the HOME Menu.
+    bool ZesteIsInHomeMenu() const {
+        return zeste_jumped_to_home;
+    }
+    /// Zeste: what the HOME Menu does when the user goes back to the application (used when no
+    /// HOME Menu is installed): drops the parameter the application sent to it and wakes the
+    /// application up.
+    void ZesteLeaveSimulatedHomeMenu() {
+        next_parameter.reset();
+        zeste_jumped_to_home = false;
+        LeaveHomeMenu(nullptr, {});
+    }
+    /// Zeste: registers (or removes) a stand-in HOME Menu applet so applications see a HOME Menu
+    /// (libctru only jumps to HOME when one is registered). No-op when a real one is running.
+    void ZesteSetSimulatedHomeMenu(bool present);
+
     Result PrepareToStartLibraryApplet(AppletId applet_id);
     Result PreloadLibraryApplet(AppletId applet_id);
     Result FinishPreloadingLibraryApplet(AppletId applet_id);
@@ -509,6 +525,8 @@ private:
     // Holds data about the concurrently running applets in the system.
     std::array<AppletSlotData, NumAppletSlot> applet_slots = {};
     AppletSlot active_slot = AppletSlot::Error;
+    bool zeste_jumped_to_home = false; ///< Zeste: set by JumpToHomeMenu
+    bool zeste_fake_home_menu = false; ///< Zeste: HOME Menu slot registered by Zeste
 
     AppletSlot last_library_launcher_slot = AppletSlot::Error;
     SignalType library_applet_closing_command = SignalType::None;
