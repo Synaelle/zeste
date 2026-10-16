@@ -109,6 +109,7 @@
 #include "core/file_sys/archive_extsavedata.h"
 #include "core/file_sys/archive_source_sd_savedata.h"
 #include "core/frontend/applets/default_applets.h"
+#include "core/file_sys/cia_container.h"
 #include "core/hle/service/am/am.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/nfc/nfc.h"
@@ -462,6 +463,15 @@ GMainWindow::GMainWindow(Core::System& system_)
                 exit(1);
             }
             QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--boot-cia") && i + 1 < args.size()) {
+            const QString installed = ZesteInstallCiaForBoot(args[++i]);
+            if (installed.isEmpty()) {
+                ShowCommandOutput("Zeste", "Could not install the CIA (see the log)");
+                exit(1);
+            }
+            game_path = installed;
             continue;
         }
         if (args[i] == QStringLiteral("--rpc")) {
@@ -1626,6 +1636,30 @@ bool GMainWindow::LoadROM(const QString& filename) {
     return true;
 }
 
+QString GMainWindow::ZesteInstallCiaForBoot(const QString& cia_path) {
+    const std::string path = cia_path.toStdString();
+    u64 title_id = 0;
+    {
+        FileUtil::IOFile file(path, "rb");
+        FileSys::CIAContainer cia;
+        if (!file.IsOpen() || cia.Load(&file) != Loader::ResultStatus::Success) {
+            LOG_CRITICAL(Frontend, "--boot-cia: {} is not a readable CIA", path);
+            return {};
+        }
+        title_id = cia.GetTitleMetadata().GetTitleID();
+    }
+    const auto status = Service::AM::InstallCIA(path);
+    if (status != Service::AM::InstallStatus::Success) {
+        LOG_CRITICAL(Frontend, "--boot-cia: installing {} failed (status {})", path,
+                     static_cast<u32>(status));
+        return {};
+    }
+    const auto media = Service::AM::GetTitleMediaType(title_id);
+    const std::string content = Service::AM::GetTitleContentPath(media, title_id);
+    LOG_INFO(Frontend, "--boot-cia: installed {:016X}, booting {}", title_id, content);
+    return QString::fromStdString(content);
+}
+
 void GMainWindow::BootGame(const QString& filename) {
     if (emu_thread) {
         ShutdownGame();
@@ -1656,8 +1690,11 @@ void GMainWindow::BootGame(const QString& filename) {
 
     if (!is_artic && filename.endsWith(QStringLiteral(".cia")) &&
         Settings::values.zeste_no_modal_dialogs.GetValue()) {
-        LOG_CRITICAL(Frontend, "{} is a CIA: use --boot-cia to install and boot it",
-                     filename.toStdString());
+        // Zeste: install and boot, without the "must be installed" question.
+        const QString installed = ZesteInstallCiaForBoot(filename);
+        if (!installed.isEmpty()) {
+            BootGame(installed);
+        }
         return;
     }
     if (!is_artic && filename.endsWith(QStringLiteral(".cia"))) {
