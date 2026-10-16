@@ -73,3 +73,22 @@ TEST_CASE("Zeste strict PICA: GPU reachable memory", "[video_core][zeste]") {
     REQUIRE_FALSE(Pica::Zeste::IsGpuReachable(0x0000000C, 4));
     REQUIRE_FALSE(Pica::Zeste::IsGpuReachable(0x185FF000, 0x2000)); // crosses the end of VRAM
 }
+
+TEST_CASE("Zeste wrap model: signed 13.4 coordinates", "[video_core][zeste]") {
+    REQUIRE(Pica::Zeste::WrapCoordinate(100.0f) == 100.0f);
+    REQUIRE(Pica::Zeste::WrapCoordinate(-100.0f) == -100.0f);
+    REQUIRE(Pica::Zeste::WrapCoordinate(4096.0f) == -4096.0f);
+    REQUIRE(Pica::Zeste::WrapCoordinate(5000.0f) == 5000.0f - 8192.0f);
+    REQUIRE(Pica::Zeste::WrapCoordinate(-5000.0f) == -5000.0f + 8192.0f);
+}
+
+TEST_CASE("Zeste pixel addressing matches the PICA layout", "[video_core][zeste]") {
+    // 240x400 RGBA8 buffer: the row stored first is the bottom one (y = height - 1).
+    REQUIRE(Pica::Zeste::PixelByteOffset(0, 399, 240, 399, 4) == 0);
+    // One tile row higher on screen = one 8-pixel band lower in memory.
+    REQUIRE(Pica::Zeste::PixelByteOffset(0, 391, 240, 399, 4) == 8 * 240 * 4);
+    // Above the buffer top (y < 0 on screen in flipped space) lands after the buffer.
+    REQUIRE(Pica::Zeste::PixelByteOffset(0, -8, 240, 399, 4) >= 240 * 400 * 4);
+    // Below the bottom row lands before the buffer.
+    REQUIRE(Pica::Zeste::PixelByteOffset(0, 407, 240, 399, 4) < 0);
+}

@@ -49,3 +49,25 @@ TEST_CASE("Zeste break on first fires once", "[common][zeste]") {
     Zeste::SetBreakHandler({});
     Zeste::Reset();
 }
+
+TEST_CASE("Zeste report: tags and grouped summary", "[common][zeste]") {
+    Zeste::Reset();
+    Zeste::SetLogLimit(1);
+    Zeste::RegisterTagText(7, "water");
+    REQUIRE(Zeste::TagText(7) == "water");
+    REQUIRE(Zeste::TagText(9) == "#9");
+    REQUIRE(Zeste::TagText(0).empty());
+    Zeste::SetDrawTag(Zeste::TagText(7));
+    Zeste::Report(Zeste::Category::PicaVertex, "range@20000000+10", "out of range A");
+    Zeste::Report(Zeste::Category::PicaVertex, "range@20000000+20", "out of range B");
+    Zeste::Report(Zeste::Category::PicaVertex, "range@20000000+20", "out of range B");
+    Zeste::SetDrawTag({});
+    const std::string md = Zeste::FormatMarkdown("tags");
+    REQUIRE(md.find("## Grouped summary") != std::string::npos);
+    REQUIRE(md.find("| PICA vertex | range | 3 | 2 |") != std::string::npos);
+    REQUIRE(md.find("| water |") != std::string::npos);
+    const auto issues = Zeste::GetIssues();
+    REQUIRE(issues.size() == 2);
+    REQUIRE(issues[0].first_tag == "water");
+    Zeste::Reset();
+}

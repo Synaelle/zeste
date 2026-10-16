@@ -388,6 +388,7 @@ private:
         u32 draw_index = 0;     ///< Draws since the last VBlank
         u32 draw_cmdlist = 0;   ///< Command list address of the current draw
         u32 draw_offset = 0;    ///< Offset of the draw command in that list
+        u32 tag = 0;            ///< Current draw tag id (reset at the start of each list)
         bool dump_armed = false;
         bool dump_recording = false;
         std::string dump_path;

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 #include "common/common_types.h"
@@ -33,11 +34,37 @@ constexpr float GuardBand = 4096.0f;
 /// reported even when they stay inside the guard band.
 constexpr float HugeExtent = 2048.0f;
 
+/// Draw tags: an application marks its GPU work by writing the tag id to this register with an
+/// empty byte mask (the write changes nothing on hardware), and registers the text with
+/// svcOutputDebugString("ZESTE:tag <id> <text>"). 0x130 is GPUREG_FRAGOP_SHADOW.
+constexpr u32 TagRegister = 0x130;
+
+/// Wrap model for out-of-range primitives (see ZESTE_GUIDE.md, "Out-of-range primitives"):
+/// screen coordinates are signed 13.4 fixed point, so a coordinate outside
+/// [-GuardBand, GuardBand) wraps around by 2 * GuardBand.
+float WrapCoordinate(float pixels);
+
+/// Byte offset of pixel (x, y), relative to the start of a color buffer, in the PICA layout
+/// (8x8 Morton tiles, rows stored bottom-up), for any position, including positions outside the
+/// buffer (negative = before the buffer). `height_field` is the raw register value (height - 1).
+s64 PixelByteOffset(s32 x, s32 y, u32 width, u32 height_field, u32 bytes_per_pixel);
+
+/// A primitive after near-plane clipping, in screen pixels, before and after the wrap.
+struct ScreenPolygon {
+    u32 count = 0;
+    std::array<std::array<float, 2>, 4> points{};
+    std::array<std::array<float, 2>, 4> wrapped{};
+};
+/// Near-plane-only clipping and viewport transform of a triangle (false when nothing is left).
+bool ProjectNearClipped(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
+                        const OutputVertex& v2, ScreenPolygon& out);
+
 /// Where the draw comes from, for the report.
 struct DrawLocation {
     u32 cmdlist_addr = 0;  ///< Physical address of the command list
     u32 cmdlist_offset = 0; ///< Byte offset of the draw command in that list
     u32 draw_index = 0;     ///< Draw number within the current frame
+    u32 tag = 0;            ///< Draw tag id (0 = none)
 };
 
 /// Checks the register state at a draw (textures, framebuffer, buffers, addresses).

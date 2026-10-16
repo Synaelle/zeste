@@ -522,6 +522,7 @@ void QtConfig::ReadZesteValues() {
     qt_config->beginGroup(QStringLiteral("Zeste"));
     ReadBasicSetting(Settings::values.zeste_strict_pica);
     ReadBasicSetting(Settings::values.zeste_fixed_point_raster);
+    ReadBasicSetting(Settings::values.zeste_draw_wrapped);
     ReadBasicSetting(Settings::values.zeste_pica_timing);
     ReadBasicSetting(Settings::values.zeste_cpu_exceptions);
     ReadBasicSetting(Settings::values.zeste_kernel_fixes);
@@ -546,6 +547,7 @@ void QtConfig::SaveZesteValues() {
     qt_config->beginGroup(QStringLiteral("Zeste"));
     WriteBasicSetting(Settings::values.zeste_strict_pica);
     WriteBasicSetting(Settings::values.zeste_fixed_point_raster);
+    WriteBasicSetting(Settings::values.zeste_draw_wrapped);
     WriteBasicSetting(Settings::values.zeste_pica_timing);
     WriteBasicSetting(Settings::values.zeste_cpu_exceptions);
     WriteBasicSetting(Settings::values.zeste_kernel_fixes);

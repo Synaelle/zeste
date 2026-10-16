@@ -63,6 +63,12 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         gpu, tr("Hardware-like clipping (software renderer)"),
         tr("Software renderer only: clip only against the near plane (w > 0) and drop primitives "
            "whose screen coordinates overflow the fixed-point range, like the PICA200."));
+    draw_wrapped = MakeCheck(
+        gpu, tr("Draw wrapped primitives (software renderer)"),
+        tr("Software renderer only: instead of dropping primitives outside the fixed-point range, "
+           "draw them flat-shaded at their wrapped coordinates (signed 13.4 wrap, no scissor), "
+           "writing wherever the model says the hardware writes, so the corruption becomes "
+           "visible."));
     pica_timing = MakeCheck(
         gpu, tr("PICA timing model"),
         tr("Delay the P3D interrupt by an approximate PICA cycle cost (vertices, fragments, "
@@ -151,6 +157,7 @@ ConfigureZeste::~ConfigureZeste() = default;
 void ConfigureZeste::SetStrictPreset(bool enabled) {
     strict_pica->setChecked(enabled);
     fixed_point_raster->setChecked(enabled);
+    draw_wrapped->setChecked(enabled);
     pica_timing->setChecked(enabled);
     cpu_exceptions->setChecked(enabled);
     kernel_fixes->setChecked(enabled);
@@ -168,6 +175,7 @@ void ConfigureZeste::SetConfiguration() {
     const auto& v = Settings::values;
     strict_pica->setChecked(v.zeste_strict_pica.GetValue());
     fixed_point_raster->setChecked(v.zeste_fixed_point_raster.GetValue());
+    draw_wrapped->setChecked(v.zeste_draw_wrapped.GetValue());
     pica_timing->setChecked(v.zeste_pica_timing.GetValue());
     cpu_exceptions->setChecked(v.zeste_cpu_exceptions.GetValue());
     kernel_fixes->setChecked(v.zeste_kernel_fixes.GetValue());
@@ -188,6 +196,7 @@ void ConfigureZeste::ApplyConfiguration() {
     auto& v = Settings::values;
     v.zeste_strict_pica = strict_pica->isChecked();
     v.zeste_fixed_point_raster = fixed_point_raster->isChecked();
+    v.zeste_draw_wrapped = draw_wrapped->isChecked();
     v.zeste_pica_timing = pica_timing->isChecked();
     v.zeste_cpu_exceptions = cpu_exceptions->isChecked();
     v.zeste_kernel_fixes = kernel_fixes->isChecked();

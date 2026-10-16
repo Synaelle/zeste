@@ -110,6 +110,8 @@ add_library(citra_common STATIC EXCLUDE_FROM_ALL
     zstd_compression.h
     zeste_report.cpp
     zeste_report.h
+    zeste_run.cpp
+    zeste_run.h
   )
 
 target_include_directories(citra_common PUBLIC ${CMAKE_BINARY_DIR}/src)

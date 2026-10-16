@@ -2,7 +2,9 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <limits>
 #include <boost/container/static_vector.hpp>
+#include "common/color.h"
 #include "common/logging/log.h"
 #include "common/microprofile.h"
 #include "common/settings.h"
@@ -121,8 +123,13 @@ void RasterizerSoftware::AddTriangle(const Pica::OutputVertex& v0, const Pica::O
     // Zeste hardware-like clipping: the PICA200 only clips against the near plane and rasterizes
     // in fixed point, so primitives whose near-clipped screen coordinates leave the fixed-point
     // range are lost on hardware. Drop them here too (x/y are still clipped in floating point).
-    if (Settings::values.zeste_fixed_point_raster.GetValue() &&
+    if ((Settings::values.zeste_fixed_point_raster.GetValue() ||
+         Settings::values.zeste_draw_wrapped.GetValue()) &&
         !Pica::Zeste::FixedPointRasterAccepts(regs, v0, v1, v2)) [[unlikely]] {
+        if (Settings::values.zeste_draw_wrapped.GetValue()) {
+            ZesteDrawWrapped(v0, v1, v2);
+            return;
+        }
         ::Zeste::Report(::Zeste::Category::PicaVertex, "sw-fixed-point-drop",
                         "software renderer dropped a primitive outside the fixed-point range "
                         "(hardware-like clipping)");
@@ -216,6 +223,109 @@ void RasterizerSoftware::AddTriangle(const Pica::OutputVertex& v0, const Pica::O
             vtx2.screenpos.z.ToFloat32());
 
         ProcessTriangle(vtx0, vtx1, vtx2);
+    }
+}
+
+void RasterizerSoftware::ZesteDrawWrapped(const Pica::OutputVertex& v0,
+                                          const Pica::OutputVertex& v1,
+                                          const Pica::OutputVertex& v2) {
+    Pica::Zeste::ScreenPolygon poly;
+    if (!Pica::Zeste::ProjectNearClipped(regs, v0, v1, v2, poly)) {
+        return;
+    }
+    const auto& fb = regs.framebuffer.framebuffer;
+    const u32 width = fb.GetWidth();
+    if (width == 0 || fb.allow_color_write == 0) {
+        return;
+    }
+    const auto format = fb.color_format.Value();
+    const u32 bpp = Pica::BytesPerPixel(Pica::PixelFormat(format));
+    const PAddr base = fb.GetColorBufferPhysicalAddress();
+
+    // Flat colour: the average of the vertex colours (no texturing, lighting, depth or blending).
+    Common::Vec4<u8> color{};
+    for (std::size_t c = 0; c < 4; ++c) {
+        const float value =
+            (v0.color[c].ToFloat32() + v1.color[c].ToFloat32() + v2.color[c].ToFloat32()) / 3.0f;
+        color[c] = static_cast<u8>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
+    }
+
+    constexpr s64 MaxPixels = 16 * 1024 * 1024;
+    s64 written = 0, outside = 0;
+    s64 lo = std::numeric_limits<s64>::max(), hi = std::numeric_limits<s64>::min();
+    bool truncated = false;
+    const auto& w = poly.wrapped;
+    for (u32 t = 1; t + 1 < poly.count; ++t) {
+        const std::array<std::array<float, 2>, 3> tri = {w[0], w[t], w[t + 1]};
+        const float area = (tri[1][0] - tri[0][0]) * (tri[2][1] - tri[0][1]) -
+                           (tri[2][0] - tri[0][0]) * (tri[1][1] - tri[0][1]);
+        if (area == 0.0f) {
+            continue;
+        }
+        const s32 x0 = static_cast<s32>(std::floor(std::min({tri[0][0], tri[1][0], tri[2][0]})));
+        const s32 x1 = static_cast<s32>(std::ceil(std::max({tri[0][0], tri[1][0], tri[2][0]})));
+        const s32 y0 = static_cast<s32>(std::floor(std::min({tri[0][1], tri[1][1], tri[2][1]})));
+        const s32 y1 = static_cast<s32>(std::ceil(std::max({tri[0][1], tri[1][1], tri[2][1]})));
+        if (static_cast<s64>(x1 - x0) * (y1 - y0) > MaxPixels) {
+            truncated = true;
+            continue;
+        }
+        const auto edge = [&](int a, int b, float px, float py) {
+            return (tri[b][0] - tri[a][0]) * (py - tri[a][1]) -
+                   (tri[b][1] - tri[a][1]) * (px - tri[a][0]);
+        };
+        for (s32 y = y0; y < y1; ++y) {
+            for (s32 x = x0; x < x1; ++x) {
+                const float px = x + 0.5f, py = y + 0.5f;
+                const float e0 = edge(0, 1, px, py), e1 = edge(1, 2, px, py), e2 = edge(2, 0, px, py);
+                const bool inside = area > 0 ? (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                                             : (e0 <= 0 && e1 <= 0 && e2 <= 0);
+                if (!inside) {
+                    continue;
+                }
+                const s64 offset = Pica::Zeste::PixelByteOffset(x, y, width, fb.height, bpp);
+                const s64 addr = static_cast<s64>(base) + offset;
+                if (addr < 0 || addr > 0xFFFFFFFFLL ||
+                    !Pica::Zeste::IsGpuReachable(static_cast<PAddr>(addr), bpp)) {
+                    ++outside;
+                    continue;
+                }
+                u8* dst = memory.GetPhysicalPointer(static_cast<PAddr>(addr));
+                if (!dst) {
+                    ++outside;
+                    continue;
+                }
+                switch (format) {
+                case FramebufferRegs::ColorFormat::RGBA8:
+                    Common::Color::EncodeRGBA8(color, dst);
+                    break;
+                case FramebufferRegs::ColorFormat::RGB8:
+                    Common::Color::EncodeRGB8(color, dst);
+                    break;
+                case FramebufferRegs::ColorFormat::RGB5A1:
+                    Common::Color::EncodeRGB5A1(color, dst);
+                    break;
+                case FramebufferRegs::ColorFormat::RGB565:
+                    Common::Color::EncodeRGB565(color, dst);
+                    break;
+                default:
+                    Common::Color::EncodeRGBA4(color, dst);
+                    break;
+                }
+                ++written;
+                lo = std::min(lo, offset);
+                hi = std::max(hi, offset + static_cast<s64>(bpp));
+            }
+        }
+    }
+    if (written != 0 || truncated) {
+        ::Zeste::ReportF(::Zeste::Category::PicaVertex, "sw-wrapped-draw",
+                         "software renderer drew a wrapped primitive: {} pixels written at "
+                         "0x{:08X}-0x{:08X} (color buffer 0x{:08X}), {} pixels outside GPU "
+                         "memory{}",
+                         written, written ? static_cast<u32>(base + lo) : 0,
+                         written ? static_cast<u32>(base + hi) : 0, base, outside,
+                         truncated ? ", part skipped (over 16M pixels)" : "");
     }
 }
 

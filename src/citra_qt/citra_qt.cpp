@@ -122,6 +122,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_bug_report.h"
 #include "core/zeste_core.h"
+#include "common/zeste_run.h"
 #include "input_common/main.h"
 #include "ui_main.h"
 #include "video_core/gpu.h"
@@ -275,6 +276,16 @@ static int GetMajorVersion(const std::string& version) {
 GMainWindow::GMainWindow(Core::System& system_)
     : ui{std::make_unique<Ui::MainWindow>()}, system{system_}, movie{system.Movie()},
       user_data_migrator{this}, config{std::make_unique<QtConfig>()}, emu_thread{nullptr} {
+    // Zeste: every process logs into its own run folder (log, report, run.txt), so concurrent
+    // instances never rotate, lock or overwrite each other's files.
+    {
+        const QStringList arguments = QApplication::arguments();
+        const std::string folder =
+            Zeste::Run::Begin(arguments.join(QChar::fromLatin1(' ')).toStdString());
+        if (headless_mode && !folder.empty()) {
+            std::cout << "Zeste run folder: " << folder << std::endl;
+        }
+    }
     Common::Log::Initialize();
     Common::Log::Start();
 
@@ -5041,9 +5052,21 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     }
 
     GMainWindow main_window(system);
+    const auto finish_run = [](int code) {
+        Zeste::Run::Note("exit code", std::to_string(code));
+        if (GMainWindow::headless_mode && !Zeste::Run::Folder().empty()) {
+            const std::string report = Zeste::Run::Folder() + "zeste_report.md";
+            std::cout << "Zeste run folder: " << Zeste::Run::Folder() << std::endl;
+            if (FileUtil::Exists(report)) {
+                std::cout << "Zeste report: " << report << std::endl;
+            }
+            std::cout << "Zeste exit code: " << code << std::endl;
+        }
+        return code;
+    };
     if (GMainWindow::headless_boot_failed) {
         main_window.close();
-        return 1;
+        return finish_run(1);
     }
 
 #ifdef _WIN32
@@ -5073,5 +5096,5 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     app.processEvents();
 
     int result = app.exec();
-    return result;
+    return finish_run(result);
 }

@@ -71,6 +71,14 @@ bool ReportF(Category category, std::string_view key, fmt::format_string<Args...
     return Report(category, key, fmt::format(format, std::forward<Args>(args)...));
 }
 
+/// Draw tags (see docs: "Labelling GPU work"). The GPU code sets the tag of the draw being
+/// checked; every report made meanwhile records it. Empty = no tag.
+void SetDrawTag(std::string_view tag);
+/// Text registered by the application for a tag id ("ZESTE:tag <id> <text>" debug string).
+void RegisterTagText(u32 id, std::string text);
+/// The text of a tag id ("#<id>" when the application never registered a text, "" for 0).
+std::string TagText(u32 id);
+
 /// Returns the current context (or an invalid one when no provider is installed).
 Context CurrentContext();
 
@@ -94,6 +102,7 @@ struct IssueSummary {
     u64 count;
     std::string message;
     Context first_context;
+    std::string first_tag;
 };
 
 /// Every distinct issue recorded since the last Reset(), most frequent first.
