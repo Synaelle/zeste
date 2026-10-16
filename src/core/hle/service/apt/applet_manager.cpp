@@ -499,6 +499,24 @@ u32 AppletManager::CountRegisteredApplet() {
                                           [](auto& slot_data) { return slot_data.registered; }));
 }
 
+void AppletManager::ZesteSetSimulatedHomeMenu(bool present) {
+    auto slot_data = GetAppletSlot(AppletSlot::HomeMenu);
+    if (present) {
+        if (slot_data->registered) {
+            return; // A real HOME Menu is running.
+        }
+        slot_data->applet_id = AppletId::HomeMenu;
+        slot_data->registered = true;
+        slot_data->attributes.raw = 0;
+        slot_data->attributes.applet_pos.Assign(AppletPos::System);
+        slot_data->attributes.is_home_menu.Assign(1);
+        zeste_fake_home_menu = true;
+    } else if (zeste_fake_home_menu) {
+        slot_data->Reset();
+        zeste_fake_home_menu = false;
+    }
+}
+
 bool AppletManager::IsRegistered(AppletId app_id) {
     auto slot = GetAppletSlotFromId(app_id);
     return slot != AppletSlot::Error && GetAppletSlot(slot)->registered;
@@ -994,6 +1012,7 @@ Result AppletManager::PrepareToJumpToHomeMenu() {
 
 Result AppletManager::JumpToHomeMenu(std::shared_ptr<Kernel::Object> object,
                                      const std::vector<u8>& buffer) {
+    zeste_jumped_to_home = true;
     if (last_jump_to_home_slot != AppletSlot::Error) {
         auto slot_data = GetAppletSlot(last_jump_to_home_slot);
         if (slot_data->applet_id != AppletId::None) {
