@@ -153,8 +153,6 @@ foreach(KEY IN ITEMS
     "update_check_channel"
     # Zeste (hardware accuracy)
     "zeste_strict_pica"
-    "zeste_fixed_point_raster"
-    "zeste_draw_wrapped"
     "zeste_pica_timing"
     "zeste_cpu_exceptions"
     "zeste_kernel_fixes"

@@ -77,7 +77,7 @@ void InstallCoreHooks(Core::System& system) {
         "- Application: {}\n"
         "- Console: {}, CPU backend: {}, clock {}%\n"
         "- Renderer: {}, hardware vertex shaders: {}\n"
-        "- Zeste options: strict_pica={} fixed_point_raster={} draw_wrapped={} pica_timing={} "
+        "- Zeste options: strict_pica={} pica_timing={} "
         "cpu_exceptions={} "
         "kernel_fixes={} cache_detection={} hw_memory_layout={} cpu_speed_model={} "
         "preempt_mode={} seed={} strict_priority={} sd_latency={} break_on_first={}\n",
@@ -89,7 +89,6 @@ void InstallCoreHooks(Core::System& system) {
         : v.graphics_api.GetValue() == Settings::GraphicsAPI::OpenGL ? "OpenGL"
                                                                        : "Vulkan",
         v.use_hw_shader.GetValue(), v.zeste_strict_pica.GetValue(),
-        v.zeste_fixed_point_raster.GetValue(), v.zeste_draw_wrapped.GetValue(),
         v.zeste_pica_timing.GetValue(),
         v.zeste_cpu_exceptions.GetValue(), v.zeste_kernel_fixes.GetValue(),
         v.zeste_cache_detection.GetValue(), v.zeste_hw_memory_layout.GetValue(),

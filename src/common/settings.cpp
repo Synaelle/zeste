@@ -82,8 +82,6 @@ double temporary_frame_limit;
 
 void SetZesteStrictPreset(bool enabled) {
     values.zeste_strict_pica = enabled;
-    values.zeste_fixed_point_raster = enabled;
-    values.zeste_draw_wrapped = enabled;
     values.zeste_pica_timing = enabled;
     values.zeste_cpu_exceptions = enabled;
     values.zeste_kernel_fixes = enabled;
@@ -100,10 +98,9 @@ bool ApplyZesteOptionByName(const std::string& name) {
         SetZesteStrictPreset(true);
     } else if (name == "strict_pica") {
         values.zeste_strict_pica = true;
-    } else if (name == "fixed_point_raster") {
-        values.zeste_fixed_point_raster = true;
-    } else if (name == "draw_wrapped") {
-        values.zeste_draw_wrapped = true;
+    } else if (name == "fixed_point_raster" || name == "draw_wrapped") {
+        // Retired: hardware measurements showed no fixed-point wrap or drop (see the guide).
+        LOG_WARNING(Common, "Zeste option {} was retired and does nothing", name);
     } else if (name == "pica_timing") {
         values.zeste_pica_timing = true;
     } else if (name == "cpu_exceptions") {
@@ -133,8 +130,7 @@ bool ApplyZesteOptionByName(const std::string& name) {
 }
 
 bool IsAnyZesteOptionEnabled() {
-    return values.zeste_strict_pica.GetValue() || values.zeste_fixed_point_raster.GetValue() ||
-           values.zeste_draw_wrapped.GetValue() ||
+    return values.zeste_strict_pica.GetValue() ||
            values.zeste_pica_timing.GetValue() || values.zeste_cpu_exceptions.GetValue() ||
            values.zeste_kernel_fixes.GetValue() || values.zeste_cache_detection.GetValue() ||
            values.zeste_hw_memory_layout.GetValue() || values.zeste_cpu_speed_model.GetValue() ||
@@ -161,8 +157,6 @@ void LogSettings() {
     log_setting("Renderer_Debug", values.renderer_debug.GetValue());
     log_setting("Renderer_PicaDebugging", values.pica_debugging.GetValue());
     log_setting("Zeste_StrictPica", values.zeste_strict_pica.GetValue());
-    log_setting("Zeste_FixedPointRaster", values.zeste_fixed_point_raster.GetValue());
-    log_setting("Zeste_DrawWrapped", values.zeste_draw_wrapped.GetValue());
     log_setting("Zeste_PicaTiming", values.zeste_pica_timing.GetValue());
     log_setting("Zeste_CpuExceptions", values.zeste_cpu_exceptions.GetValue());
     log_setting("Zeste_KernelFixes", values.zeste_kernel_fixes.GetValue());

@@ -38,23 +38,35 @@ TEST_CASE("Zeste strict PICA: on-screen triangle is clean", "[video_core][zeste]
                          {});
     REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) == 0);
     REQUIRE(::Zeste::Count(::Zeste::Category::PicaBounds) == 0);
-    REQUIRE(Pica::Zeste::FixedPointRasterAccepts(regs, MakeVertex(-0.5f, -0.5f, -0.5f, 1.0f),
-                                           MakeVertex(0.5f, -0.5f, -0.5f, 1.0f),
-                                           MakeVertex(0.0f, 0.5f, -0.5f, 1.0f)));
 }
 
-TEST_CASE("Zeste strict PICA: near-plane triangle leaves the fixed-point range",
+TEST_CASE("Zeste strict PICA: far off-screen primitives within the measured range are clean",
+          "[video_core][zeste]") {
+    // Measured on a New 3DS (tools/zeste/calib): these draw exactly like float clipping.
+    ::Zeste::Reset();
+    const auto regs = MakeRegs();
+    // Unclipped, one vertex 1,000,000 px off screen.
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(-0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(8333.0f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(-0.5f, 0.5f, -0.5f, 1.0f), {});
+    // Near-plane clipped: one vertex just past the near plane at ~1e8 px, one behind the camera.
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(83333.0f, 0.0f, -0.0001f, 0.1001f),
+                               MakeVertex(0.0f, 0.0f, 1.2f, -1.0f),
+                               MakeVertex(0.0f, 0.5f, -1.0f, 2.0f), {0x20000000, 0x40, 1});
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) == 0);
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaBounds) == 0);
+}
+
+TEST_CASE("Zeste strict PICA: vertex beyond the measured range is reported",
           "[video_core][zeste]") {
     ::Zeste::Reset();
     const auto regs = MakeRegs();
-    // One vertex barely in front of the camera, two far behind it.
-    const auto v0 = MakeVertex(0.0f, 0.0f, -0.01f, 0.001f);
-    const auto v1 = MakeVertex(-50.0f, -1.0f, 10.0f, -10.0f);
-    const auto v2 = MakeVertex(50.0f, -1.0f, 10.0f, -10.0f);
-    Pica::Zeste::CheckTriangle(regs, v0, v1, v2, {0x20000000, 0x40, 1});
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(1.0e7f, 0.0f, -0.0001f, 0.001f),
+                               MakeVertex(0.0f, 0.0f, 1.2f, -1.0f),
+                               MakeVertex(0.0f, 0.5f, -1.0f, 2.0f), {0x20000000, 0x40, 1});
     REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) == 1);
-    REQUIRE(::Zeste::Count(::Zeste::Category::PicaBounds) == 1);
-    REQUIRE_FALSE(Pica::Zeste::FixedPointRasterAccepts(regs, v0, v1, v2));
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaBounds) == 0);
+    ::Zeste::Reset();
 }
 
 TEST_CASE("Zeste strict PICA: NaN position", "[video_core][zeste]") {
@@ -72,23 +84,4 @@ TEST_CASE("Zeste strict PICA: GPU reachable memory", "[video_core][zeste]") {
     REQUIRE(Pica::Zeste::IsGpuReachable(0x20000000, 0x1000));
     REQUIRE_FALSE(Pica::Zeste::IsGpuReachable(0x0000000C, 4));
     REQUIRE_FALSE(Pica::Zeste::IsGpuReachable(0x185FF000, 0x2000)); // crosses the end of VRAM
-}
-
-TEST_CASE("Zeste wrap model: signed 13.4 coordinates", "[video_core][zeste]") {
-    REQUIRE(Pica::Zeste::WrapCoordinate(100.0f) == 100.0f);
-    REQUIRE(Pica::Zeste::WrapCoordinate(-100.0f) == -100.0f);
-    REQUIRE(Pica::Zeste::WrapCoordinate(4096.0f) == -4096.0f);
-    REQUIRE(Pica::Zeste::WrapCoordinate(5000.0f) == 5000.0f - 8192.0f);
-    REQUIRE(Pica::Zeste::WrapCoordinate(-5000.0f) == -5000.0f + 8192.0f);
-}
-
-TEST_CASE("Zeste pixel addressing matches the PICA layout", "[video_core][zeste]") {
-    // 240x400 RGBA8 buffer: the row stored first is the bottom one (y = height - 1).
-    REQUIRE(Pica::Zeste::PixelByteOffset(0, 399, 240, 399, 4) == 0);
-    // One tile row higher on screen = one 8-pixel band lower in memory.
-    REQUIRE(Pica::Zeste::PixelByteOffset(0, 391, 240, 399, 4) == 8 * 240 * 4);
-    // Above the buffer top (y < 0 on screen in flipped space) lands after the buffer.
-    REQUIRE(Pica::Zeste::PixelByteOffset(0, -8, 240, 399, 4) >= 240 * 400 * 4);
-    // Below the bottom row lands before the buffer.
-    REQUIRE(Pica::Zeste::PixelByteOffset(0, 407, 240, 399, 4) < 0);
 }

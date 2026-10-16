@@ -636,8 +636,6 @@ struct Values {
 
     // Zeste: hardware accuracy. Everything defaults to off (= Azahar behaviour).
     Setting<bool> zeste_strict_pica{false, Keys::zeste_strict_pica};
-    Setting<bool> zeste_fixed_point_raster{false, Keys::zeste_fixed_point_raster};
-    Setting<bool> zeste_draw_wrapped{false, Keys::zeste_draw_wrapped};
     Setting<bool> zeste_pica_timing{false, Keys::zeste_pica_timing};
     Setting<bool> zeste_cpu_exceptions{false, Keys::zeste_cpu_exceptions};
     Setting<bool> zeste_kernel_fixes{false, Keys::zeste_kernel_fixes};

@@ -2,8 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
-// Zeste strict PICA mode: per-draw checks of what the real PICA200 mishandles, and the
-// near-plane-only clipping model used by the software renderer's "hardware-like clipping".
+// Zeste strict PICA mode: per-draw checks of what the real PICA200 mishandles.
 
 #pragma once
 
@@ -24,40 +23,16 @@ struct ShaderSetup;
 
 namespace Pica::Zeste {
 
-/// Assumed range of the PICA200 rasterizer's fixed-point screen coordinates, in pixels.
-/// The software rasterizer models them as 12.4 fixed point; with only near-plane clipping, the
-/// usable range around the viewport is modelled as [-GuardBand, GuardBand). This is an
-/// assumption (see docs/ZESTE_CHANGES.md), not a measured hardware constant.
-constexpr float GuardBand = 4096.0f;
-
-/// Near-plane clipped primitives whose screen bounding box is larger than this (in pixels) are
-/// reported even when they stay inside the guard band.
-constexpr float HugeExtent = 2048.0f;
+/// Screen coordinates (pixels) up to which out-of-range primitives were measured on a New 3DS
+/// (tools/zeste/calib): unclipped triangles up to +-1e6 px and near-plane clipped ones up to
+/// 1e9 px drew exactly like float clipping (no wrap, no drop, no GPU hang). Vertices beyond this
+/// are reported as unverified.
+constexpr float MeasuredRange = 1e9f;
 
 /// Draw tags: an application marks its GPU work by writing the tag id to this register with an
 /// empty byte mask (the write changes nothing on hardware), and registers the text with
 /// svcOutputDebugString("ZESTE:tag <id> <text>"). 0x130 is GPUREG_FRAGOP_SHADOW.
 constexpr u32 TagRegister = 0x130;
-
-/// Wrap model for out-of-range primitives (see ZESTE_GUIDE.md, "Out-of-range primitives"):
-/// screen coordinates are signed 13.4 fixed point, so a coordinate outside
-/// [-GuardBand, GuardBand) wraps around by 2 * GuardBand.
-float WrapCoordinate(float pixels);
-
-/// Byte offset of pixel (x, y), relative to the start of a color buffer, in the PICA layout
-/// (8x8 Morton tiles, rows stored bottom-up), for any position, including positions outside the
-/// buffer (negative = before the buffer). `height_field` is the raw register value (height - 1).
-s64 PixelByteOffset(s32 x, s32 y, u32 width, u32 height_field, u32 bytes_per_pixel);
-
-/// A primitive after near-plane clipping, in screen pixels, before and after the wrap.
-struct ScreenPolygon {
-    u32 count = 0;
-    std::array<std::array<float, 2>, 4> points{};
-    std::array<std::array<float, 2>, 4> wrapped{};
-};
-/// Near-plane-only clipping and viewport transform of a triangle (false when nothing is left).
-bool ProjectNearClipped(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
-                        const OutputVertex& v2, ScreenPolygon& out);
 
 /// Where the draw comes from, for the report.
 struct DrawLocation {
@@ -76,16 +51,9 @@ void CheckDrawState(const RegsInternal& regs, Memory::MemorySystem& memory, bool
 /// and the host renderers would read through a null pointer.
 bool DrawBuffersReachable(const RegsInternal& regs, bool is_indexed, const DrawLocation& where);
 
-/// Checks one post-vertex-shader triangle (NaN/Inf, fixed-point range, near-plane extents,
-/// framebuffer bounds).
+/// Checks one post-vertex-shader triangle (NaN/Inf, coordinates beyond the measured range).
 void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
                    const OutputVertex& v2, const DrawLocation& where);
-
-/// Hardware-like clipping for the software renderer: returns false when the triangle must be
-/// dropped because, after clipping against the near plane only, a vertex leaves the fixed-point
-/// range (the hardware draws it wrong or not at all; Zeste drops it and reports).
-bool FixedPointRasterAccepts(const RegsInternal& regs, const OutputVertex& v0,
-                             const OutputVertex& v1, const OutputVertex& v2);
 
 /// Memory a draw reads (vertex attributes, indices, textures) and writes (color/depth buffers).
 struct DrawRange {
