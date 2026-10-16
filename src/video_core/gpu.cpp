@@ -12,6 +12,7 @@
 #include "core/loader/loader.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/gpu.h"
+#include "core/zeste_cache.h"
 #include "video_core/gpu_debugger.h"
 #include "video_core/gpu_impl.h"
 #include "video_core/pica/pica_core.h"
@@ -172,6 +173,11 @@ Result GPU::Execute(const Service::GSP::Command& command) {
                                                            command.dma_request.size,
                                                            Memory::FlushMode::Invalidate);
 
+        if (const auto dst = Zeste::Cache::LinearToPhysical(command.dma_request.dest_address)) {
+            // Written by the DMA engine. The source side is not checked: whether GSP flushes it
+            // itself is not known.
+            Zeste::Cache::OnSystemWrite(impl->memory, *dst, command.dma_request.size);
+        }
         // TODO(Subv): These memory accesses should not go through the application's memory mapping.
         // They should go through the GSP module's memory mapping.
         const auto process = impl->system.Kernel().GetCurrentProcess();
@@ -193,6 +199,13 @@ Result GPU::Execute(const Service::GSP::Command& command) {
     case CommandId::SubmitCmdList: {
         auto& params = command.submit_gpu_cmdlist;
         auto& cmdbuffer = regs.internal.pipeline.command_buffer;
+
+        if (params.do_flush) {
+            // GX_ProcessCommandList with the flush flag: GSP flushes the list for the app.
+            if (const auto list = Zeste::Cache::LinearToPhysical(params.address)) {
+                Zeste::Cache::OnCpuFlush(impl->memory, *list, params.size);
+            }
+        }
 
         // Write to the command buffer GPU registers.
         // The GSP module uses address 0 when the buffer is not in GPU visible memory.
@@ -288,6 +301,14 @@ Result GPU::Execute(const Service::GSP::Command& command) {
     case CommandId::CacheFlush: {
         // Rasterizer flushing handled elsewhere in CPU read/write and other GPU handlers
         // Use command.cache_flush.regions to implement this handler
+        for (const auto& region : command.cache_flush.regions) {
+            if (region.size == 0) {
+                continue;
+            }
+            if (const auto paddr = Zeste::Cache::LinearToPhysical(region.address)) {
+                Zeste::Cache::OnCpuFlush(impl->memory, *paddr, region.size);
+            }
+        }
         break;
     }
     default:
@@ -533,6 +554,23 @@ void GPU::MemoryTransfer() {
     // Notify debugger about the display transfer.
     if (impl->debug_context) {
         impl->debug_context->OnEvent(Pica::DebugContext::Event::IncomingDisplayTransfer, nullptr);
+    }
+
+    if (Zeste::Cache::Enabled()) [[unlikely]] {
+        if (config.is_texture_copy) {
+            Zeste::Cache::CheckDeviceRead(impl->memory, config.GetPhysicalInputAddress(),
+                                          config.texture_copy.size, "texture copy source");
+            Zeste::Cache::OnDeviceWrite(impl->memory, config.GetPhysicalOutputAddress(),
+                                        config.texture_copy.size);
+        } else {
+            Zeste::Cache::CheckDeviceRead(
+                impl->memory, config.GetPhysicalInputAddress(),
+                config.input_width * config.input_height * BytesPerPixel(config.input_format),
+                "display transfer source");
+            Zeste::Cache::OnDeviceWrite(
+                impl->memory, config.GetPhysicalOutputAddress(),
+                config.output_width * config.output_height * BytesPerPixel(config.output_format));
+        }
     }
 
     u64 delay{};

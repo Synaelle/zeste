@@ -7,6 +7,7 @@
 #include "audio_core/codec.h"
 #include "audio_core/hle/common.h"
 #include "audio_core/hle/source.h"
+#include "core/zeste_cache.h"
 #include "audio_core/interpolate.h"
 #include "common/assert.h"
 #include "common/logging/log.h"
@@ -460,6 +461,13 @@ bool Source::DequeueBuffer() {
     const u8* const memory = memory_system->GetPhysicalPointer(buf.physical_address & 0xFFFFFFFC);
     if (memory) {
         const unsigned num_channels = buf.mono_or_stereo == MonoOrStereo::Stereo ? 2 : 1;
+        if (Zeste::Cache::Enabled()) [[unlikely]] {
+            const u32 bytes = buf.format == Format::PCM16  ? buf.length * 2 * num_channels
+                              : buf.format == Format::PCM8 ? buf.length * num_channels
+                                                           : (buf.length + 1) / 2;
+            Zeste::Cache::CheckDeviceRead(*memory_system, buf.physical_address & 0xFFFFFFFC,
+                                          bytes, "DSP sample buffer");
+        }
         switch (buf.format) {
         case Format::PCM8:
             state.current_buffer = Codec::DecodePCM8(num_channels, memory, buf.length);

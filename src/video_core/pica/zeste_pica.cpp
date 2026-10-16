@@ -321,6 +321,79 @@ void CheckDrawState(const RegsInternal& regs, Memory::MemorySystem& memory, bool
     }
 }
 
+void CollectDrawRanges(const RegsInternal& regs, Memory::MemorySystem& memory, bool is_indexed,
+                       std::vector<DrawRange>& reads, std::vector<DrawRange>& writes) {
+    const auto& fb = regs.framebuffer.framebuffer;
+    const u32 pixels = fb.GetWidth() * fb.GetHeight();
+    if (fb.allow_color_write != 0) {
+        writes.push_back({fb.GetColorBufferPhysicalAddress(),
+                          pixels * ColorBytesPerPixel(fb.color_format.Value()), "color buffer"});
+    }
+    if (fb.allow_depth_stencil_write != 0) {
+        writes.push_back({fb.GetDepthBufferPhysicalAddress(),
+                          pixels * FramebufferRegs::BytesPerDepthPixel(fb.depth_format.Value()),
+                          "depth buffer"});
+    }
+
+    const auto& pipeline = regs.pipeline;
+    const auto& attribs = pipeline.vertex_attributes;
+    const PAddr base = attribs.GetPhysicalBaseAddress();
+    u32 first_vertex = pipeline.vertex_offset;
+    u32 end_vertex = pipeline.vertex_offset + pipeline.num_vertices;
+    if (is_indexed) {
+        const bool u16_index = pipeline.index_array.format != 0;
+        const PAddr index_addr = base + pipeline.index_array.offset;
+        const u32 index_size = pipeline.num_vertices * (u16_index ? 2 : 1);
+        reads.push_back({index_addr, index_size, "GPU index buffer"});
+        first_vertex = 0xFFFFFFFF;
+        end_vertex = 0;
+        if (const u8* indices = memory.GetPhysicalPointer(index_addr);
+            indices && IsGpuReachable(index_addr, index_size)) {
+            for (u32 i = 0; i < pipeline.num_vertices; ++i) {
+                u32 index;
+                if (u16_index) {
+                    u16 v;
+                    std::memcpy(&v, indices + i * 2, sizeof(v));
+                    index = v;
+                } else {
+                    index = indices[i];
+                }
+                first_vertex = std::min(first_vertex, index);
+                end_vertex = std::max(end_vertex, index + 1);
+            }
+        }
+    }
+    if (end_vertex > first_vertex) {
+        for (std::size_t i = 0; i < 12; ++i) {
+            const auto& loader = attribs.attribute_loaders[i];
+            if (loader.component_count == 0 || loader.byte_count == 0) {
+                continue;
+            }
+            reads.push_back({base + loader.data_offset + loader.byte_count * first_vertex,
+                             loader.byte_count * (end_vertex - first_vertex),
+                             "GPU vertex buffer"});
+        }
+    }
+
+    const auto textures = regs.texturing.GetTextures();
+    for (std::size_t unit = 0; unit < textures.size(); ++unit) {
+        const auto& tex = textures[unit];
+        if (!tex.enabled || tex.config.GetPhysicalAddress() == 0 ||
+            (unit == 0 && tex.config.type == TexturingRegs::TextureConfig::Disabled)) {
+            continue;
+        }
+        const u32 w = tex.config.width;
+        const u32 h = tex.config.height;
+        u64 size = 0;
+        for (u32 level = 0; level <= tex.config.lod.max_level; ++level) {
+            size += static_cast<u64>(std::max(1u, w >> level)) * std::max(1u, h >> level) *
+                    TextureBitsPerPixel(tex.format) / 8;
+        }
+        reads.push_back({tex.config.GetPhysicalAddress(),
+                         static_cast<u32>(std::min<u64>(size, 0x400000)), "GPU texture"});
+    }
+}
+
 void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
                    const OutputVertex& v2, const DrawLocation& where) {
     const std::array<const OutputVertex*, 3> vs = {&v0, &v1, &v2};

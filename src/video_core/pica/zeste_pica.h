@@ -8,6 +8,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "common/common_types.h"
 #include "video_core/pica/output_vertex.h"
 
@@ -52,6 +53,15 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
 /// range (the hardware draws it wrong or not at all; Zeste drops it and reports).
 bool FixedPointRasterAccepts(const RegsInternal& regs, const OutputVertex& v0,
                              const OutputVertex& v1, const OutputVertex& v2);
+
+/// Memory a draw reads (vertex attributes, indices, textures) and writes (color/depth buffers).
+struct DrawRange {
+    PAddr addr;
+    u32 size;
+    const char* what;
+};
+void CollectDrawRanges(const RegsInternal& regs, Memory::MemorySystem& memory, bool is_indexed,
+                       std::vector<DrawRange>& reads, std::vector<DrawRange>& writes);
 
 /// True when the physical address is in memory the GPU can reach (VRAM or FCRAM).
 bool IsGpuReachable(PAddr addr, u32 size);

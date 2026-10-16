@@ -19,6 +19,7 @@
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/result.h"
 #include "core/hle/service/gsp/gsp_gpu.h"
+#include "core/zeste_cache.h"
 #include "core/memory.h"
 #include "video_core/gpu.h"
 #include "video_core/gpu_debugger.h"
@@ -465,7 +466,7 @@ static bool IsValidCacheRange(VAddr address, u32 size, bool allow_vram) {
            (allow_vram && address >= Memory::VRAM_VADDR && address <= Memory::VRAM_VADDR_END);
 }
 
-void GSP_GPU::DoCacheOperation(Kernel::HLERequestContext& ctx, bool allow_vram) {
+void GSP_GPU::DoCacheOperation(Kernel::HLERequestContext& ctx, bool allow_vram, CacheOp op) {
     IPC::RequestParser rp(ctx);
     const u32 address = rp.Pop<u32>();
     const u32 size = rp.Pop<u32>();
@@ -479,15 +480,23 @@ void GSP_GPU::DoCacheOperation(Kernel::HLERequestContext& ctx, bool allow_vram) 
         rb.Push(ResultInvalidBuffer);
         return;
     }
+    // Zeste: the cache is not emulated, but flushes/invalidates feed the cache detector.
+    if (const auto paddr = Zeste::Cache::LinearToPhysical(address)) {
+        if (op == CacheOp::Invalidate) {
+            Zeste::Cache::OnCpuInvalidate(*paddr, size);
+        } else {
+            Zeste::Cache::OnCpuFlush(system.Memory(), *paddr, size);
+        }
+    }
     rb.Push(ResultSuccess);
 }
 
 void GSP_GPU::FlushDataCache(Kernel::HLERequestContext& ctx) {
-    DoCacheOperation(ctx, false);
+    DoCacheOperation(ctx, false, CacheOp::Flush);
 }
 
 void GSP_GPU::InvalidateDataCache(Kernel::HLERequestContext& ctx) {
-    DoCacheOperation(ctx, true);
+    DoCacheOperation(ctx, true, CacheOp::Invalidate);
 }
 
 void GSP_GPU::RegisterInterruptEvents(Kernel::HLERequestContext& ctx) {
@@ -495,7 +504,7 @@ void GSP_GPU::RegisterInterruptEvents(Kernel::HLERequestContext& ctx) {
 }
 
 void GSP_GPU::StoreDataCache(Kernel::HLERequestContext& ctx) {
-    DoCacheOperation(ctx, false);
+    DoCacheOperation(ctx, false, CacheOp::Store);
 }
 
 void GSP_GPU::ResetGpuCore(Kernel::HLERequestContext& ctx) {

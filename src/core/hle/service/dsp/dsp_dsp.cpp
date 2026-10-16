@@ -10,6 +10,7 @@
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/process.h"
 #include "core/hle/service/dsp/dsp_dsp.h"
+#include "core/zeste_cache.h"
 
 using DspPipe = AudioCore::DspPipe;
 using InterruptType = Service::DSP::InterruptType;
@@ -208,6 +209,9 @@ void DSP_DSP::FlushDataCache(Kernel::HLERequestContext& ctx) {
     [[maybe_unused]] const VAddr address = rp.Pop<u32>();
     [[maybe_unused]] const u32 size = rp.Pop<u32>();
     const auto process = rp.PopObject<Kernel::Process>();
+    if (const auto paddr = Zeste::Cache::LinearToPhysical(address)) {
+        Zeste::Cache::OnCpuFlush(system.Memory(), *paddr, size);
+    }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(ResultSuccess);
@@ -221,6 +225,9 @@ void DSP_DSP::InvalidateDataCache(Kernel::HLERequestContext& ctx) {
     [[maybe_unused]] const VAddr address = rp.Pop<u32>();
     [[maybe_unused]] const u32 size = rp.Pop<u32>();
     const auto process = rp.PopObject<Kernel::Process>();
+    if (const auto paddr = Zeste::Cache::LinearToPhysical(address)) {
+        Zeste::Cache::OnCpuInvalidate(*paddr, size);
+    }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(ResultSuccess);
