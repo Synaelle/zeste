@@ -248,7 +248,10 @@ void Execute(Core::System& system, const Command& command) {
     } else if (verb == "dump-vram") {
         DumpPhysical(system, Memory::VRAM_PADDR, Memory::VRAM_SIZE, args[1]);
     } else if (verb == "dump-cmdlist") {
-        system.GPU().PicaCore().ZesteArmCommandListDump(args[1]);
+        // dump-cmdlist <file> [vertex filter: tag substrings separated by '|', or *] [frames]
+        system.GPU().PicaCore().ZesteArmCommandListDump(
+            args[1], args.size() > 2 ? args[2] : "",
+            args.size() > 3 ? static_cast<u32>(ParseNumber(args[3], 1)) : 1);
     } else if (verb == "home" || verb == "sleep" || verb == "close" || verb == "rosalina") {
         SystemEvents::Start(system, verb, args.size() > 1 ? ParseNumber(args[1], 0) : 0);
     } else if (verb == "report") {

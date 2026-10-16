@@ -402,6 +402,39 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
         }
     }
 
+    // 24-bit float range: the emulator computed these in 32-bit floats. Only the shader's outputs
+    // are checked, not its intermediate values.
+    for (const auto* v : vs) {
+        const std::array<float, 4> pos = {v->pos.x.ToFloat32(), v->pos.y.ToFloat32(),
+                                          v->pos.z.ToFloat32(), v->pos.w.ToFloat32()};
+        const auto too_big = [](float f) { return std::abs(f) > F24Max; };
+        if (std::any_of(pos.begin(), pos.end(), too_big)) {
+            ReportF(Category::PicaVertex, Site("f24-overflow", where),
+                    "vertex position ({:.4g}, {:.4g}, {:.4g}, {:.4g}) exceeds the 24-bit float "
+                    "range (+-{:.3g}): Inf on hardware, finite in the emulator | {}",
+                    pos[0], pos[1], pos[2], pos[3], F24Max, Where(where));
+            break;
+        }
+        if (pos[3] != 0.0f && std::abs(pos[3]) < F24MinNormal) {
+            ReportF(Category::PicaVertex, Site("f24-underflow", where),
+                    "vertex w = {:.4g} is below the smallest 24-bit float ({:.3g}): 0 on hardware "
+                    "| {}",
+                    pos[3], F24MinNormal, Where(where));
+            break;
+        }
+        const std::array<float, 8> attr = {v->color.r().ToFloat32(), v->color.g().ToFloat32(),
+                                           v->color.b().ToFloat32(), v->color.a().ToFloat32(),
+                                           v->tc0.u().ToFloat32(),   v->tc0.v().ToFloat32(),
+                                           v->tc1.u().ToFloat32(),   v->tc1.v().ToFloat32()};
+        if (std::any_of(attr.begin(), attr.end(), too_big)) {
+            ReportF(Category::PicaVertex, Site("f24-overflow-attr", where),
+                    "vertex color or texcoord exceeds the 24-bit float range (+-{:.3g}): Inf on "
+                    "hardware, finite in the emulator | {}",
+                    F24Max, Where(where));
+            break;
+        }
+    }
+
     // Hardware calibration (tools/zeste/calib, ZESTE_GUIDE.md section 13): primitives far outside
     // the screen draw exactly like float clipping, up to the magnitudes measured. Only vertices
     // beyond those are reported, as unverified. Vertices outside the depth range are clipped
@@ -426,6 +459,69 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
                 "(+-{:.0g} px drew correctly): not verified | {}",
                 worst, MeasuredRange, Where(where));
     }
+}
+
+TriangleDump DescribeTriangle(const RegsInternal& regs, const OutputVertex& v0,
+                              const OutputVertex& v1, const OutputVertex& v2) {
+    using Polygon = boost::container::static_vector<ClipVertex, 9>;
+    const std::array<const OutputVertex*, 3> vs = {&v0, &v1, &v2};
+    TriangleDump out;
+    Polygon poly;
+    for (const auto* v : vs) {
+        poly.push_back({v->pos.x.ToFloat32(), v->pos.y.ToFloat32(), v->pos.z.ToFloat32(),
+                        v->pos.w.ToFloat32()});
+        out.text += fmt::format(" ({:.6g}, {:.6g}, {:.6g}, {:.6g}) uv ({:.4g}, {:.4g})",
+                                poly.back().x, poly.back().y, poly.back().z, poly.back().w,
+                                v->tc0.x.ToFloat32(), v->tc0.y.ToFloat32());
+    }
+    // Planes as distance functions: w >= epsilon, z <= 0 (near), z >= -w (far).
+    const std::array<float (*)(const ClipVertex&), 3> planes = {
+        [](const ClipVertex& c) { return c.w - NearEpsilon; },
+        [](const ClipVertex& c) { return -c.z; },
+        [](const ClipVertex& c) { return c.z + c.w; },
+    };
+    for (const auto plane : planes) {
+        Polygon in = poly;
+        poly.clear();
+        for (std::size_t i = 0; i < in.size(); ++i) {
+            const ClipVertex& a = in[i];
+            const ClipVertex& b = in[(i + 1) % in.size()];
+            const float da = plane(a), db = plane(b);
+            if (da >= 0) {
+                poly.push_back(a);
+            } else {
+                out.cut = true;
+            }
+            if ((da >= 0) != (db >= 0) && poly.size() < poly.capacity()) {
+                const float t = da / (da - db);
+                poly.push_back({a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
+                                a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t});
+            }
+        }
+        if (poly.size() < 3) {
+            out.outside = true;
+            out.text += " | clipped away";
+            return out;
+        }
+    }
+    const auto& r = regs.rasterizer;
+    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
+    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
+    const float off_x = static_cast<float>(r.viewport_corner.x);
+    const float off_y = static_cast<float>(r.viewport_corner.y);
+    out.min_x = out.min_y = std::numeric_limits<float>::max();
+    out.max_x = out.max_y = std::numeric_limits<float>::lowest();
+    out.text += out.cut ? fmt::format(" | cut, {} vertices on screen:", poly.size()) : " | screen:";
+    for (const auto& c : poly) {
+        const float sx = (c.x / c.w + 1.0f) * half_x + off_x;
+        const float sy = (c.y / c.w + 1.0f) * half_y + off_y;
+        out.min_x = std::min(out.min_x, sx);
+        out.min_y = std::min(out.min_y, sy);
+        out.max_x = std::max(out.max_x, sx);
+        out.max_y = std::max(out.max_y, sy);
+        out.text += fmt::format(" ({:.6g}, {:.6g})", sx, sy);
+    }
+    return out;
 }
 
 u32 VertexShaderLength(const RegsInternal& regs, const ShaderSetup& vs) {
