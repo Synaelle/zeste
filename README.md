@@ -1,4 +1,8 @@
-# Zeste
+<p align="center">
+  <img src="dist/zeste.png" width="128" alt="Zeste icon">
+</p>
+
+<h1 align="center">Zeste</h1>
 
 Zeste is a fork of [Azahar](https://github.com/azahar-emu/azahar) that I use to test 3DS
 homebrew. Azahar is very forgiving, so things that crash or break on a real New 3DS often
