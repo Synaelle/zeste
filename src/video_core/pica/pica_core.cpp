@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <limits>
 #include "common/arch.h"
 #include "common/archives.h"
 #include "common/microprofile.h"
@@ -87,6 +88,9 @@ PicaCore::PicaCore(Memory::MemorySystem& memory_, std::shared_ptr<DebugContext> 
             }
             if (zeste.timing) [[unlikely]] {
                 zeste.gpu_cycles += Zeste::TriangleCostCycles(regs.internal, v0, v1, v2);
+            }
+            if (zeste.dump_vertices) [[unlikely]] {
+                ZesteRecordTriangle(v0, v1, v2);
             }
             rasterizer->AddTriangle(v0, v1, v2);
         };
@@ -1101,6 +1105,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
     zeste.draw_cmdlist = cmd_list.addr;
     zeste.draw_offset = cmd_list.current_index >= 2 ? (cmd_list.current_index - 2) * 4 : 0;
     ++zeste.draw_index;
+    zeste.dump_vertices = false;
     // Every report made while this draw is processed records its tag.
     ::Zeste::SetDrawTag(::Zeste::TagText(zeste.tag));
     SCOPE_EXIT({ ::Zeste::SetDrawTag({}); });
@@ -1120,6 +1125,26 @@ void PicaCore::DrawArrays(bool is_indexed) {
     }
     if (zeste.dump_recording) [[unlikely]] {
         ZesteRecordDraw(is_indexed);
+        const std::string tag_text = ::Zeste::TagText(zeste.tag);
+        // The filter is one or more tag substrings separated by '|'; "*" matches every draw.
+        zeste.dump_vertices = false;
+        for (std::size_t start = 0; !zeste.dump_filter.empty() && start <= zeste.dump_filter.size();) {
+            const std::size_t end = std::min(zeste.dump_filter.find('|', start), zeste.dump_filter.size());
+            const std::string part = zeste.dump_filter.substr(start, end - start);
+            if (part == "*" || (!part.empty() && tag_text.find(part) != std::string::npos)) {
+                zeste.dump_vertices = true;
+                break;
+            }
+            start = end + 1;
+        }
+        if (zeste.dump_vertices) {
+            zeste.dump_triangles = zeste.dump_cut = zeste.dump_outside = 0;
+            zeste.dump_min_x = zeste.dump_min_y = std::numeric_limits<float>::max();
+            zeste.dump_max_x = zeste.dump_max_y = std::numeric_limits<float>::lowest();
+            zeste.dump_text += "    triangles: vertex shader output (x, y, z, w) and texcoord 0, "
+                               "then the screen polygon after clipping to w > 0 and the depth "
+                               "range:\n";
+        }
     }
     if (::Zeste::Cache::Enabled()) [[unlikely]] {
         std::vector<Zeste::DrawRange> reads, writes;
@@ -1152,7 +1177,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
 
         // Zeste strict PICA checks need the post-vertex-shader vertices on the CPU.
         bool accelerate_draw = Settings::values.use_hw_shader && primitive_assembler.IsEmpty() &&
-                               !zeste.strict && !zeste.timing;
+                               !zeste.strict && !zeste.timing && !zeste.dump_vertices;
         const auto topology = primitive_assembler.GetTopology();
         if (topology == PipelineRegs::TriangleTopology::Shader ||
             topology == PipelineRegs::TriangleTopology::List) {
@@ -1175,6 +1200,9 @@ void PicaCore::DrawArrays(bool is_indexed) {
 
     // Draw emitted triangles.
     rasterizer->DrawTriangles();
+    if (zeste.dump_vertices) [[unlikely]] {
+        ZesteRecordDrawEnd();
+    }
 
     if (debug_context) {
         debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch, nullptr);
@@ -1348,10 +1376,42 @@ void PicaCore::CommandList::serialize(Archive& ar, const u32 file_version) {
 
 SERIALIZE_IMPL(PicaCore::CommandList)
 
-void PicaCore::ZesteArmCommandListDump(const std::string& path) {
-    zeste.dump_path = path;
+void PicaCore::ZesteArmCommandListDump(const std::string& path, const std::string& vertex_filter,
+                                       u32 frames) {
+    zeste.dump_base_path = path;
+    zeste.dump_filter = vertex_filter;
+    zeste.dump_numbered = frames > 1;
+    zeste.dump_frames_left = frames > 1 ? frames - 1 : 0;
+    zeste.dump_frame_number = 0;
     zeste.dump_armed = true;
-    LOG_INFO(Zeste, "PICA command list dump armed for the next frame: {}", path);
+    LOG_INFO(Zeste, "PICA command list dump armed for the next {} frame(s): {}{}", frames, path,
+             vertex_filter.empty() ? std::string{}
+                                   : fmt::format(" (vertices of draws tagged \"{}\")", vertex_filter));
+}
+
+void PicaCore::ZesteRecordTriangle(const OutputVertex& v0, const OutputVertex& v1,
+                                   const OutputVertex& v2) {
+    const auto tri = Zeste::DescribeTriangle(regs.internal, v0, v1, v2);
+    zeste.dump_text += fmt::format("    tri {}:{}\n", zeste.dump_triangles++, tri.text);
+    zeste.dump_cut += tri.cut ? 1 : 0;
+    zeste.dump_outside += tri.outside ? 1 : 0;
+    if (!tri.outside) {
+        zeste.dump_min_x = std::min(zeste.dump_min_x, tri.min_x);
+        zeste.dump_min_y = std::min(zeste.dump_min_y, tri.min_y);
+        zeste.dump_max_x = std::max(zeste.dump_max_x, tri.max_x);
+        zeste.dump_max_y = std::max(zeste.dump_max_y, tri.max_y);
+    }
+}
+
+void PicaCore::ZesteRecordDrawEnd() {
+    zeste.dump_vertices = false;
+    const u32 kept = zeste.dump_triangles - zeste.dump_outside;
+    zeste.dump_text += fmt::format(
+        "    summary: {} triangles, {} cut by a clip plane, {} clipped away{}\n",
+        zeste.dump_triangles, zeste.dump_cut, zeste.dump_outside,
+        kept ? fmt::format("; screen bounds after clipping ({:.6g}, {:.6g})-({:.6g}, {:.6g})",
+                           zeste.dump_min_x, zeste.dump_min_y, zeste.dump_max_x, zeste.dump_max_y)
+             : std::string{});
 }
 
 void PicaCore::ZesteRecordWrite(u32 id, u32 value, u32 mask) {
@@ -1395,10 +1455,24 @@ void PicaCore::ZesteOnVBlank() {
         LOG_INFO(Zeste, "PICA command lists of one frame written to {} ({} bytes)",
                  zeste.dump_path, zeste.dump_text.size());
         zeste.dump_text.clear();
+        if (zeste.dump_frames_left > 0) {
+            --zeste.dump_frames_left;
+            ++zeste.dump_frame_number;
+            zeste.dump_armed = true;
+        }
     }
     if (zeste.dump_armed) {
         zeste.dump_armed = false;
         zeste.dump_recording = true;
+        zeste.dump_path = zeste.dump_base_path;
+        if (zeste.dump_numbered) {
+            const std::size_t dot = zeste.dump_path.find_last_of('.');
+            const std::size_t slash = zeste.dump_path.find_last_of("/\\");
+            const std::size_t at = dot != std::string::npos && (slash == std::string::npos || dot > slash)
+                                       ? dot
+                                       : zeste.dump_path.size();
+            zeste.dump_path.insert(at, fmt::format("-{:03}", zeste.dump_frame_number));
+        }
         zeste.dump_text = "Zeste PICA command list dump: one frame (VBlank to VBlank).\n"
                           "Offsets are byte offsets in the command list; registers are PICA "
                           "internal register indices (see 3dbrew GPU/Internal Registers).\n";

@@ -122,8 +122,12 @@ public:
     void ProcessCmdList(PAddr list, u32 size, bool ignore_list);
 
     /// Zeste: records every command list of the next emulated frame (register writes with their
-    /// command-list offset, and the full register state at every draw) into a text file.
-    void ZesteArmCommandListDump(const std::string& path);
+    /// command-list offset, and the full register state at every draw) into a text file. With a
+    /// vertex filter (tag substrings separated by '|', or "*" for every draw), the matching draws
+    /// also list their triangles: vertex shader output and screen polygon after clipping. With
+    /// frames > 1, that many consecutive frames are recorded, into <path>-000.<ext>, -001, ...
+    void ZesteArmCommandListDump(const std::string& path, const std::string& vertex_filter = {},
+                                 u32 frames = 1);
 
     /// Zeste: called at every VBlank (frame boundary for draw numbering and dumps).
     void ZesteOnVBlank();
@@ -133,6 +137,9 @@ private:
 
     void ZesteRecordWrite(u32 id, u32 value, u32 mask);
     void ZesteRecordDraw(bool is_indexed);
+    void ZesteRecordTriangle(const OutputVertex& v0, const OutputVertex& v1,
+                             const OutputVertex& v2);
+    void ZesteRecordDrawEnd();
 
     void HandleSpecialRegBatch(u32 id, const u32* values, u32 count);
 
@@ -393,6 +400,14 @@ private:
         bool dump_recording = false;
         std::string dump_path;
         std::string dump_text;
+        u32 dump_frames_left = 0;   ///< Frames still to record after the current one
+        u32 dump_frame_number = 0;  ///< Index of the frame being recorded (numbered files)
+        bool dump_numbered = false; ///< Several frames: numbered file names
+        std::string dump_base_path; ///< Path given to the command
+        std::string dump_filter;   ///< Tag substring ("*" = all) of draws whose vertices are dumped
+        bool dump_vertices = false; ///< The current draw's triangles are being dumped
+        u32 dump_triangles = 0, dump_cut = 0, dump_outside = 0;
+        float dump_min_x = 0, dump_min_y = 0, dump_max_x = 0, dump_max_y = 0;
     } zeste;
 
     friend class boost::serialization::access;

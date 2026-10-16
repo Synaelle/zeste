@@ -69,6 +69,29 @@ TEST_CASE("Zeste strict PICA: vertex beyond the measured range is reported",
     ::Zeste::Reset();
 }
 
+TEST_CASE("Zeste strict PICA: values outside the 24-bit float range", "[video_core][zeste]") {
+    const auto regs = MakeRegs();
+    // Finite in 32-bit floats, Inf on the PICA.
+    ::Zeste::Reset();
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(-0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.0f, 3.0e19f, -0.5f, 1.0f), {});
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) >= 1);
+    // w flushed to 0 on the PICA.
+    ::Zeste::Reset();
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(-0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.0f, 0.0f, 0.0f, 1.0e-20f), {});
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) >= 1);
+    // Large but in range: clean.
+    ::Zeste::Reset();
+    Pica::Zeste::CheckTriangle(regs, MakeVertex(-0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.5f, -0.5f, -0.5f, 1.0f),
+                               MakeVertex(0.0f, 0.5f, -0.5f, 1.0e18f), {});
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) == 0);
+    ::Zeste::Reset();
+}
+
 TEST_CASE("Zeste strict PICA: NaN position", "[video_core][zeste]") {
     ::Zeste::Reset();
     const auto regs = MakeRegs();
