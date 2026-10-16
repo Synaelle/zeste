@@ -9,6 +9,7 @@
 #include "common/file_util.h"
 #include "common/logging/log.h"
 #include "common/zeste_report.h"
+#include "common/zeste_run.h"
 #include "core/core.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_bug_report.h"
@@ -48,6 +49,8 @@ std::string Directory(const std::string& path) {
 
 /// Appends text to the list, creating it with a heading the first time.
 void Append(const std::string& text) {
+    // Several Zeste instances may append at the same time.
+    Run::SharedFileLock lock;
     const std::string path = ListPath();
     const bool exists = FileUtil::Exists(path);
     FileUtil::CreateFullPath(path);
@@ -119,7 +122,7 @@ std::string File(Core::System* system, Kind kind, const std::string& title,
     if (running && screenshot) {
         const std::string dir = Directory(ListPath()) + "zeste_reports_files/";
         FileUtil::CreateFullPath(dir);
-        const std::string stem = Timestamp(tm, true);
+        const std::string stem = fmt::format("{}-{}", Timestamp(tm, true), Run::ProcessId());
         std::string shots;
         if (Automation::DumpLcd(*system, 0, dir + stem + "_top.png")) {
             shots += fmt::format("[top](zeste_reports_files/{}_top.png)", stem);

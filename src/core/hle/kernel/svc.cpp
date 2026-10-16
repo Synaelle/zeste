@@ -11,6 +11,7 @@
 #include "common/microprofile.h"
 #include "common/scm_rev.h"
 #include "common/settings.h"
+#include "common/zeste_report.h"
 #include "core/zeste_sched.h"
 #include "core/arm/arm_interface.h"
 #include "core/arm/exception_handler.h"
@@ -1200,6 +1201,23 @@ void SVC::OutputDebugString(VAddr address, s32 len) {
     std::string string(len, ' ');
     memory.ReadBlock(*kernel.GetCurrentProcess(), address, string.data(), len);
     LOG_DEBUG(Debug_Emulated, "{}", string);
+
+    // Zeste draw tags: "ZESTE:tag <id> <text>" registers the text of a tag id (see the guide).
+    constexpr std::string_view TagPrefix = "ZESTE:tag ";
+    if (string.starts_with(TagPrefix)) {
+        const std::string rest = string.substr(TagPrefix.size());
+        std::size_t used = 0;
+        try {
+            const u32 id = static_cast<u32>(std::stoul(rest, &used, 0));
+            std::string text = rest.substr(std::min(used + 1, rest.size()));
+            while (!text.empty() && (text.back() == '\n' || text.back() == '\0')) {
+                text.pop_back();
+            }
+            ::Zeste::RegisterTagText(id, text);
+        } catch (...) {
+            LOG_WARNING(Kernel_SVC, "Zeste: malformed tag string '{}'", string);
+        }
+    }
 }
 
 /// Get resource limit

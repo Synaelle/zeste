@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <boost/container/static_vector.hpp>
 #include "common/settings.h"
 #include "common/zeste_report.h"
@@ -12,6 +13,7 @@
 #include "video_core/pica/regs_internal.h"
 #include "video_core/pica/shader_setup.h"
 #include "video_core/pica/zeste_pica.h"
+#include "video_core/utils.h"
 
 namespace Pica::Zeste {
 
@@ -21,8 +23,10 @@ using ::Zeste::ReportF;
 namespace {
 
 std::string Where(const DrawLocation& where) {
-    return fmt::format("cmdlist 0x{:08X}+0x{:X} draw #{}", where.cmdlist_addr,
-                       where.cmdlist_offset, where.draw_index);
+    const std::string tag = ::Zeste::TagText(where.tag);
+    return fmt::format("cmdlist 0x{:08X}+0x{:X} draw #{}{}", where.cmdlist_addr,
+                       where.cmdlist_offset, where.draw_index,
+                       tag.empty() ? std::string{} : fmt::format(" tag \"{}\"", tag));
 }
 
 /// Dedup key per draw site: the same draw in later frames is counted, not logged again.
@@ -164,6 +168,56 @@ u64 TiledRowOffset(u32 y, u32 width, u32 bytes_per_pixel) {
 }
 
 } // Anonymous namespace
+
+float WrapCoordinate(float pixels) {
+    // Signed 13.4 fixed point: 17 bits, range [-4096, 4096) pixels.
+    const double fixed = std::floor(static_cast<double>(pixels) * 16.0);
+    constexpr double Span = 2.0 * GuardBand * 16.0;
+    double wrapped = std::fmod(fixed + Span / 2.0, Span);
+    if (wrapped < 0) {
+        wrapped += Span;
+    }
+    return static_cast<float>((wrapped - Span / 2.0) / 16.0);
+}
+
+s64 PixelByteOffset(s32 x, s32 y, u32 width, u32 height_field, u32 bytes_per_pixel) {
+    // Same addressing as the PICA (and Azahar's software framebuffer): rows are stored bottom-up
+    // (fb_y = height_field - y), in 8x8 Morton tiles, tile rows of `width` pixels.
+    const s64 fb_y = static_cast<s64>(height_field) - y;
+    const s64 coarse_y = fb_y >= 0 ? (fb_y & ~7LL) : -(((-fb_y) + 7) & ~7LL);
+    const s64 coarse_x = x >= 0 ? (x & ~7LL) : -(((-static_cast<s64>(x)) + 7) & ~7LL);
+    const u32 fine = VideoCore::MortonInterleave(static_cast<u32>(x - coarse_x),
+                                                 static_cast<u32>(fb_y - coarse_y));
+    return (static_cast<s64>(fine) + coarse_x * 8) * bytes_per_pixel +
+           coarse_y * static_cast<s64>(width) * bytes_per_pixel;
+}
+
+bool ProjectNearClipped(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
+                        const OutputVertex& v2, ScreenPolygon& out) {
+    const std::array<ClipVertex, 3> in = {{
+        {v0.pos.x.ToFloat32(), v0.pos.y.ToFloat32(), v0.pos.z.ToFloat32(), v0.pos.w.ToFloat32()},
+        {v1.pos.x.ToFloat32(), v1.pos.y.ToFloat32(), v1.pos.z.ToFloat32(), v1.pos.w.ToFloat32()},
+        {v2.pos.x.ToFloat32(), v2.pos.y.ToFloat32(), v2.pos.z.ToFloat32(), v2.pos.w.ToFloat32()},
+    }};
+    const auto clipped = ClipNear(in);
+    if (clipped.size() < 3) {
+        return false;
+    }
+    const auto& r = regs.rasterizer;
+    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
+    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
+    const float off_x = static_cast<float>(r.viewport_corner.x);
+    const float off_y = static_cast<float>(r.viewport_corner.y);
+    out.count = static_cast<u32>(clipped.size());
+    for (u32 i = 0; i < out.count; ++i) {
+        const auto& v = clipped[i];
+        const float sx = (v.x / v.w + 1.0f) * half_x + off_x;
+        const float sy = (v.y / v.w + 1.0f) * half_y + off_y;
+        out.points[i] = {sx, sy};
+        out.wrapped[i] = {WrapCoordinate(sx), WrapCoordinate(sy)};
+    }
+    return true;
+}
 
 bool IsGpuReachable(PAddr addr, u32 size) {
     const u64 end = static_cast<u64>(addr) + size;
@@ -458,17 +512,41 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
         const auto& fb = regs.framebuffer.framebuffer;
         const u32 fb_w = fb.GetWidth();
         const u32 fb_h = fb.GetHeight();
-        if (fb_w != 0) {
-            // The coordinates wrap in the 12.4 fixed-point format: estimate which rows of memory
-            // after the framebuffer a wrapped primitive could touch.
+        ScreenPolygon poly;
+        if (fb_w != 0 && ProjectNearClipped(regs, v0, v1, v2, poly)) {
+            // Wrap model: each vertex wraps independently (signed 13.4), the wrapped primitive is
+            // rasterized as such and the scissor test does not stop it (see the guide).
+            float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+            for (u32 i = 0; i < poly.count; ++i) {
+                x0 = std::min(x0, poly.wrapped[i][0]);
+                y0 = std::min(y0, poly.wrapped[i][1]);
+                x1 = std::max(x1, poly.wrapped[i][0]);
+                y1 = std::max(y1, poly.wrapped[i][1]);
+            }
+            const s32 ix0 = static_cast<s32>(std::floor(x0)), iy0 = static_cast<s32>(std::floor(y0));
+            const s32 ix1 = static_cast<s32>(std::ceil(x1)), iy1 = static_cast<s32>(std::ceil(y1));
             const u32 bpp = ColorBytesPerPixel(fb.color_format.Value());
             const PAddr color = fb.GetColorBufferPhysicalAddress();
-            const u32 fb_size = fb_w * fb_h * bpp;
-            const u64 worst = TiledRowOffset(4095, fb_w, bpp);
+            const s64 fb_size = static_cast<s64>(fb_w) * fb_h * bpp;
+            s64 lo = std::numeric_limits<s64>::max(), hi = std::numeric_limits<s64>::min();
+            for (const s32 x : {ix0, ix1, ix0 + 7, ix1 - 7}) {
+                for (const s32 y : {iy0, iy1, iy0 + 7, iy1 - 7}) {
+                    const s64 off = PixelByteOffset(x, y, fb_w, fb.height, bpp);
+                    lo = std::min(lo, off);
+                    hi = std::max(hi, off + bpp);
+                }
+            }
+            const bool inside = lo >= 0 && hi <= fb_size;
             ReportF(Category::PicaBounds, Site("oob", where),
-                    "out-of-range primitive on the {}x{} framebuffer at 0x{:08X}: wrapped "
-                    "coordinates can write 0x{:08X}-0x{:08X} (past the buffer end) | {}",
-                    fb_w, fb_h, color, color + fb_size, static_cast<u32>(color + worst),
+                    "out-of-range primitive wraps to screen ({},{})-({},{}) ({}x{} px) on the {}x{} "
+                    "framebuffer at 0x{:08X}; modelled writes 0x{:08X}-0x{:08X}{} (signed 13.4 "
+                    "wrap, scissor not applied) | {}",
+                    ix0, iy0, ix1, iy1, ix1 - ix0, iy1 - iy0, fb_w, fb_h, color,
+                    static_cast<u32>(color + lo), static_cast<u32>(color + hi),
+                    inside ? " (inside the buffer)"
+                           : fmt::format(" ({} KiB before, {} KiB after the buffer)",
+                                         lo < 0 ? (-lo + 1023) / 1024 : 0,
+                                         hi > fb_size ? (hi - fb_size + 1023) / 1024 : 0),
                     Where(where));
         }
     } else if (b.near_clipped &&

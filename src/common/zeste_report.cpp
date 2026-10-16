@@ -27,7 +27,28 @@ struct KeyEntry {
     u64 count = 0;
     std::string first_message;
     Context first_context;
+    std::string first_tag;
+    u64 last_frame = ~0ULL;
+    u64 draws = 0; ///< Frames in which this site reported (one draw per frame and site)
 };
+
+/// Grouped totals per kind of issue (the key prefix before '@'), for the summary.
+struct KindEntry {
+    u64 count = 0;          ///< Reports (primitives, accesses...)
+    u64 sites = 0;          ///< Distinct keys (draw sites, addresses...)
+    u64 draws = 0;          ///< Distinct (site, frame) pairs
+    u64 frames = 0;         ///< Distinct frames (counted as frame changes)
+    u64 first_frame = 0;
+    u64 last_frame = ~0ULL;
+    std::string example;    ///< First message
+};
+
+std::string_view KindOf(std::string_view key) {
+    const auto at = key.find('@');
+    return at == std::string_view::npos ? key : key.substr(0, at);
+}
+
+thread_local std::string t_draw_tag;
 
 struct State {
     std::mutex mutex;
@@ -41,6 +62,8 @@ struct State {
     std::array<u64, NumCategories> dropped_keys{};
     std::array<std::atomic<u64>, NumCategories> totals{};
     std::string environment;
+    std::array<std::map<std::string, KindEntry, std::less<>>, NumCategories> kinds;
+    std::map<u32, std::string> tag_texts;
 };
 
 State& GetState() {
@@ -135,6 +158,26 @@ void SetReportEnvironment(std::string environment) {
     s.environment = std::move(environment);
 }
 
+void SetDrawTag(std::string_view tag) {
+    t_draw_tag.assign(tag);
+}
+
+void RegisterTagText(u32 id, std::string text) {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    s.tag_texts[id] = std::move(text);
+}
+
+std::string TagText(u32 id) {
+    if (id == 0) {
+        return {};
+    }
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    const auto it = s.tag_texts.find(id);
+    return it != s.tag_texts.end() ? it->second : fmt::format("#{}", id);
+}
+
 std::string GetReportEnvironment() {
     auto& s = GetState();
     std::scoped_lock lock{s.mutex};
@@ -148,7 +191,7 @@ std::vector<IssueSummary> GetIssues() {
     for (std::size_t i = 0; i < NumCategories; ++i) {
         for (const auto& [key, entry] : s.keys[i]) {
             out.push_back({static_cast<Category>(i), entry.count, entry.first_message,
-                           entry.first_context});
+                           entry.first_context, entry.first_tag});
         }
     }
     std::stable_sort(out.begin(), out.end(),
@@ -205,10 +248,36 @@ bool Report(Category category, std::string_view key, std::string_view message) {
                 it = map.emplace(std::string{key}, KeyEntry{}).first;
                 it->second.first_message = std::string{message};
                 it->second.first_context = ctx;
+                it->second.first_tag = t_draw_tag;
             }
         }
+        bool new_site = false;
+        bool new_draw = false;
         if (it != map.end()) {
             key_count = ++it->second.count;
+            new_site = key_count == 1;
+            if (it->second.last_frame != ctx.frame) {
+                it->second.last_frame = ctx.frame;
+                ++it->second.draws;
+                new_draw = true;
+            }
+        }
+        // Grouped totals per kind, kept even for keys beyond MaxKeysPerCategory.
+        auto& kinds = s.kinds[index];
+        const auto kind_name = KindOf(key);
+        auto kind_it = kinds.find(kind_name);
+        if (kind_it == kinds.end()) {
+            kind_it = kinds.emplace(std::string{kind_name}, KindEntry{}).first;
+            kind_it->second.first_frame = ctx.frame;
+            kind_it->second.example = std::string{message};
+        }
+        auto& kind = kind_it->second;
+        ++kind.count;
+        kind.sites += new_site ? 1 : 0;
+        kind.draws += new_draw || it == map.end() ? 1 : 0;
+        if (kind.last_frame != ctx.frame) {
+            kind.last_frame = ctx.frame;
+            ++kind.frames;
         }
         if (key_count != 0 && key_count <= s.per_key_limit &&
             s.logged[index] < CategoryLogBudget) {
@@ -229,7 +298,9 @@ bool Report(Category category, std::string_view key, std::string_view message) {
     }
 
     if (do_log) {
-        LOG_WARNING(Zeste, "[{}] {} | {}{}", CategoryName(category), message, FormatContext(ctx),
+        LOG_WARNING(Zeste, "[{}] {}{} | {}{}", CategoryName(category), message,
+                    t_draw_tag.empty() ? std::string{} : fmt::format(" | tag \"{}\"", t_draw_tag),
+                    FormatContext(ctx),
                     key_count == s.per_key_limit ? " (further reports of this kind are silenced)"
                                                  : "");
     }
@@ -247,6 +318,7 @@ void Reset() {
     std::scoped_lock lock{s.mutex};
     for (std::size_t i = 0; i < NumCategories; ++i) {
         s.keys[i].clear();
+        s.kinds[i].clear();
         s.logged[i] = 0;
         s.dropped_keys[i] = 0;
         s.totals[i].store(0, std::memory_order_relaxed);
@@ -278,11 +350,40 @@ std::string FormatMarkdown(std::string_view title) {
         out += "\nNo hardware-accuracy issue was detected (only enabled checks run).\n";
         return out;
     }
+
+    // One line per kind of issue: how many reports, from how many draw sites / draws / frames.
+    out += "\n## Grouped summary\n\nOne line per kind of issue. Reports = primitives or accesses; "
+           "sites = distinct draw sites (command list + offset) or addresses; draws = (site, "
+           "frame) pairs.\n\n| Category | Kind | Reports | Sites | Draws | Frames | First frame "
+           "| Example |\n|---|---|---|---|---|---|---|---|\n";
+    for (std::size_t i = 0; i < NumCategories; ++i) {
+        std::vector<std::pair<const std::string*, const KindEntry*>> kinds;
+        for (const auto& [name, entry] : s.kinds[i]) {
+            kinds.emplace_back(&name, &entry);
+        }
+        std::sort(kinds.begin(), kinds.end(),
+                  [](const auto& a, const auto& b) { return a.second->count > b.second->count; });
+        for (const auto& [name, kind] : kinds) {
+            std::string example = kind->example;
+            if (const auto bar = example.find(" | "); bar != std::string::npos) {
+                example.resize(bar);
+            }
+            for (auto& c : example) {
+                if (c == '|' || c == '\n') {
+                    c = ' ';
+                }
+            }
+            out += fmt::format("| {} | {} | {} | {} | {} | {} | {} | {} |\n",
+                               CategoryName(static_cast<Category>(i)), *name, kind->count,
+                               kind->sites, kind->draws, kind->frames, kind->first_frame, example);
+        }
+    }
+
     for (std::size_t i = 0; i < NumCategories; ++i) {
         if (s.keys[i].empty()) {
             continue;
         }
-        out += fmt::format("\n## {}\n\n| Count | Issue | First seen |\n|---|---|---|\n",
+        out += fmt::format("\n## {}\n\n| Count | Issue | Tag | First seen |\n|---|---|---|---|\n",
                            CategoryName(static_cast<Category>(i)));
         std::vector<std::pair<const std::string*, const KeyEntry*>> sorted;
         for (const auto& [key, entry] : s.keys[i]) {
@@ -297,7 +398,7 @@ std::string FormatMarkdown(std::string_view title) {
                     c = ' ';
                 }
             }
-            out += fmt::format("| {} | {} | {} |\n", entry->count, message,
+            out += fmt::format("| {} | {} | {} | {} |\n", entry->count, message, entry->first_tag,
                                FormatContext(entry->first_context));
         }
         if (s.dropped_keys[i] != 0) {
@@ -324,13 +425,25 @@ bool WriteReport(const std::string& base_path, std::string_view title) {
             for (const auto& [key, entry] : s.keys[i]) {
                 const auto& c = entry.first_context;
                 json += fmt::format(
-                    "{}\n      {{\"key\": \"{}\", \"count\": {}, \"message\": \"{}\", \"pc\": {}, "
-                    "\"lr\": {}, \"thread\": {}, \"core\": {}, \"frame\": {}}}",
-                    first ? "" : ",", JsonEscape(key), entry.count,
-                    JsonEscape(entry.first_message), c.pc, c.lr, c.thread_id, c.core_id, c.frame);
+                    "{}\n      {{\"key\": \"{}\", \"count\": {}, \"draws\": {}, \"message\": "
+                    "\"{}\", \"tag\": \"{}\", \"pc\": {}, \"lr\": {}, \"thread\": {}, "
+                    "\"core\": {}, \"frame\": {}}}",
+                    first ? "" : ",", JsonEscape(key), entry.count, entry.draws,
+                    JsonEscape(entry.first_message), JsonEscape(entry.first_tag), c.pc, c.lr,
+                    c.thread_id, c.core_id, c.frame);
                 first = false;
             }
-            json += fmt::format("{}]}}{}\n", first ? "" : "\n    ",
+            json += fmt::format("{}], \"groups\": [", first ? "" : "\n    ");
+            bool first_kind = true;
+            for (const auto& [name, kind] : s.kinds[i]) {
+                json += fmt::format(
+                    "{}\n      {{\"kind\": \"{}\", \"reports\": {}, \"sites\": {}, "
+                    "\"draws\": {}, \"frames\": {}, \"first_frame\": {}, \"example\": \"{}\"}}",
+                    first_kind ? "" : ",", JsonEscape(name), kind.count, kind.sites, kind.draws,
+                    kind.frames, kind.first_frame, JsonEscape(kind.example));
+                first_kind = false;
+            }
+            json += fmt::format("{}]}}{}\n", first_kind ? "" : "\n    ",
                                 i + 1 == NumCategories ? "" : ",");
         }
     }

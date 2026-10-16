@@ -127,7 +127,30 @@ static void gpu_init(void) {
 
 // Draws `count` vertices from a linear buffer. If `flush` is false the buffer is NOT flushed
 // from the CPU data cache before the GPU reads it.
+// Zeste draw tags: label the GPU work that follows in the command list. The register write uses an
+// empty byte mask, so it changes nothing on hardware; the debug string gives the id a name (once
+// per id is enough). Zeste shows the name in its reports and command-list dumps.
+#define ZESTE_TAG_REG 0x130 // GPUREG_FRAGOP_SHADOW
+static void zeste_tag(u32 id, const char* name) {
+    static bool named[32];
+    if (id < 32 && !named[id]) {
+        char text[96];
+        int n = snprintf(text, sizeof(text), "ZESTE:tag %lu %s", id, name);
+        svcOutputDebugString(text, n);
+        named[id] = true;
+    }
+    GPUCMD_AddMaskedWrite(ZESTE_TAG_REG, 0x0, id);
+}
+
+static void draw_vertices_tagged(const vertex* src, int count, bool flush, bool perspective,
+                                 u32 tag_id, const char* tag_name);
+
 static void draw_vertices(const vertex* src, int count, bool flush, bool perspective) {
+    draw_vertices_tagged(src, count, flush, perspective, 0, NULL);
+}
+
+static void draw_vertices_tagged(const vertex* src, int count, bool flush, bool perspective,
+                                 u32 tag_id, const char* tag_name) {
     vertex* vbo = linearAlloc(sizeof(vertex) * count);
     memcpy(vbo, src, sizeof(vertex) * count);
     if (flush)
@@ -142,6 +165,8 @@ static void draw_vertices(const vertex* src, int count, bool flush, bool perspec
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     C3D_RenderTargetClear(target, C3D_CLEAR_ALL, CLEAR_COLOR, 0);
     C3D_FrameDrawOn(target);
+    if (tag_name)
+        zeste_tag(tag_id, tag_name);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
     C3D_BufInfo* buf = C3D_GetBufInfo();
     BufInfo_Init(buf);
@@ -338,7 +363,7 @@ static void test_near_plane(void) {
         {1.0f, 0.0f, -1.0f, 1, 1, 1, 1},
         {0.0f, 1.0f, -1.0f, 1, 1, 1, 1},
     };
-    draw_vertices(tri, 6, true, true);
+    draw_vertices_tagged(tri, 6, true, true, 1, "near-plane test triangle");
     say("[R] done (expect strict PICA reports)");
 }
 

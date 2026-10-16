@@ -83,7 +83,7 @@ PicaCore::PicaCore(Memory::MemorySystem& memory_, std::shared_ptr<DebugContext> 
                                          const OutputVertex& v2) {
             if (zeste.strict) [[unlikely]] {
                 Zeste::CheckTriangle(regs.internal, v0, v1, v2,
-                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
+                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index, zeste.tag});
             }
             if (zeste.timing) [[unlikely]] {
                 zeste.gpu_cycles += Zeste::TriangleCostCycles(regs.internal, v0, v1, v2);
@@ -157,6 +157,7 @@ static consteval std::array<RegImplInfo, RegsInternal::NUM_REGS> BuildRegImplFla
     const auto mark_batch = [&table](u32 index) { table[index].SetSupportsBatch(); };
 
     // Single registers
+    mark_special(Zeste::TagRegister); // Zeste draw tags (empty-mask writes)
     mark_special(PICA_REG_INDEX(irq_request));
     mark_special(PICA_REG_INDEX(pipeline.triangle_topology));
     mark_special(PICA_REG_INDEX(pipeline.restart_primitive));
@@ -214,6 +215,9 @@ static consteval std::array<RegImplInfo, RegsInternal::NUM_REGS> BuildRegImplFla
 
     return table;
 }
+
+static_assert(PICA_REG_INDEX(framebuffer.shadow) == Zeste::TagRegister,
+              "Zeste tag register must be GPUREG_FRAGOP_SHADOW");
 
 static constexpr std::array<RegImplInfo, RegsInternal::NUM_REGS> reg_impl_flags_lut =
     BuildRegImplFlagsLUT();
@@ -286,6 +290,7 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
 
     const u8* head = memory.GetPhysicalPointer(list);
     cmd_list.Reset(list, head, size);
+    zeste.tag = 0;
 
     bool stop_requested = false;
     bool skip_fast_path = false;
@@ -991,6 +996,13 @@ void PicaCore::WriteInternalReg(u32 id, u32 value, u32 mask, bool& stop_requeste
         debug_context->OnEvent(DebugContext::Event::PicaCommandLoaded, &id);
     }
 
+    if (id == Zeste::TagRegister && mask == 0) [[unlikely]] {
+        // Zeste draw tag: the empty byte mask leaves the register unchanged.
+        zeste.tag = value;
+        if (zeste.dump_recording) {
+            zeste.dump_text += fmt::format("  TAG {} \"{}\"\n", value, ::Zeste::TagText(value));
+        }
+    }
     if (zeste.dump_recording) [[unlikely]] {
         ZesteRecordWrite(id, regs.internal.reg_array[id], mask);
     }
@@ -1089,17 +1101,20 @@ void PicaCore::DrawArrays(bool is_indexed) {
     zeste.draw_cmdlist = cmd_list.addr;
     zeste.draw_offset = cmd_list.current_index >= 2 ? (cmd_list.current_index - 2) * 4 : 0;
     ++zeste.draw_index;
+    // Every report made while this draw is processed records its tag.
+    ::Zeste::SetDrawTag(::Zeste::TagText(zeste.tag));
+    SCOPE_EXIT({ ::Zeste::SetDrawTag({}); });
     if (zeste.timing) [[unlikely]] {
         zeste.gpu_cycles +=
             Zeste::DrawCostCycles(regs.internal, vs_setup, regs.internal.pipeline.num_vertices);
     }
     if (zeste.strict) [[unlikely]] {
         Zeste::CheckDrawState(regs.internal, memory, is_indexed,
-                              {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
+                              {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index, zeste.tag});
     }
     if ((zeste.strict || Settings::values.zeste_hw_memory_layout.GetValue()) &&
         !Zeste::DrawBuffersReachable(regs.internal, is_indexed,
-                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index}))
+                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index, zeste.tag}))
         [[unlikely]] {
         return;
     }
@@ -1348,9 +1363,11 @@ void PicaCore::ZesteRecordWrite(u32 id, u32 value, u32 mask) {
 void PicaCore::ZesteRecordDraw(bool is_indexed) {
     const auto& p = regs.internal.pipeline;
     zeste.dump_text += fmt::format(
-        "  DRAW #{} at +0x{:05X}: {} {} vertices, first {}, attribute base 0x{:08X}\n"
+        "  DRAW #{} at +0x{:05X}{}: {} {} vertices, first {}, attribute base 0x{:08X}\n"
         "    register state (non-zero, index=value):\n",
-        zeste.draw_index, zeste.draw_offset, is_indexed ? "indexed" : "arrays",
+        zeste.draw_index, zeste.draw_offset,
+        zeste.tag ? fmt::format(" tag \"{}\"", ::Zeste::TagText(zeste.tag)) : std::string{},
+        is_indexed ? "indexed" : "arrays",
         static_cast<u32>(p.num_vertices), static_cast<u32>(p.vertex_offset),
         p.vertex_attributes.GetPhysicalBaseAddress());
     u32 on_line = 0;
