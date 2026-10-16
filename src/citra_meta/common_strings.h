@@ -28,6 +28,18 @@ constexpr char help_string[] =
     "-v, --version               Output version information and exit\n"
     "-w, --windowed              Start in windowed mode\n"
     "-x  [path]                  Decompress a Z3DS compressed ROM located at the given path\n"
-    "                              (optionally provide '-o [path]' for output directory)";
+    "                              (optionally provide '-o [path]' for output directory)\n"
+    "\n"
+    "Zeste (hardware accuracy, all off by default; command-line choices are not saved):\n"
+    "    --strict                Strict hardware mode: enable every accuracy option\n"
+    "    --zeste [list]          Enable options by name, comma separated: strict_pica,\n"
+    "                              fixed_point_raster, pica_timing, cpu_exceptions, kernel_fixes,\n"
+    "                              cache_detection, hw_memory_layout, cpu_speed_model,\n"
+    "                              preempt_svc, preempt_random, strict_priority, sd_latency\n"
+    "    --seed [n]              Seed for random preemption\n"
+    "    --break-on-first        Pause on the first hardware-accuracy report\n"
+    "    --no-dialogs            Never block on modal error dialogs (log and stop instead)\n"
+    "    --zeste-report [path]   Inaccuracy report path, without extension\n"
+    "                              (default: <log dir>/zeste_report.md/.json)";
 
 } // namespace Common

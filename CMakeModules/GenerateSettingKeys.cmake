@@ -151,6 +151,23 @@ foreach(KEY IN ITEMS
     "network_token"
     "check_for_update_on_start"
     "update_check_channel"
+    # Zeste (hardware accuracy)
+    "zeste_strict_pica"
+    "zeste_fixed_point_raster"
+    "zeste_pica_timing"
+    "zeste_cpu_exceptions"
+    "zeste_kernel_fixes"
+    "zeste_cache_detection"
+    "zeste_hw_memory_layout"
+    "zeste_cpu_speed_model"
+    "zeste_preempt_mode"
+    "zeste_preempt_seed"
+    "zeste_strict_priority"
+    "zeste_sd_latency"
+    "zeste_break_on_first"
+    "zeste_report_log_limit"
+    "zeste_write_report"
+    "zeste_no_modal_dialogs"
 )
     set(SETTING_KEY_LIST "${SETTING_KEY_LIST}\n\"${KEY}\",")
     set(SETTING_KEY_DEFINITIONS "${SETTING_KEY_DEFINITIONS}\nDEFINE_KEY(${KEY})")

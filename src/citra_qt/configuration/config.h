@@ -24,6 +24,10 @@ public:
     void Reload();
     void Save();
 
+    /// Zeste: set when hardware-accuracy options came from the command line; they are then not
+    /// written back to the config file.
+    static inline bool zeste_command_line_override = false;
+
     static const std::array<int, Settings::NativeButton::NumButtons> default_buttons;
     static const std::array<std::array<int, 5>, Settings::NativeAnalog::NumAnalogs> default_analogs;
     static const std::vector<UISettings::Shortcut> default_hotkeys;
@@ -38,6 +42,7 @@ private:
     void ReadCoreValues();
     void ReadDataStorageValues();
     void ReadDebuggingValues();
+    void ReadZesteValues();
     void ReadLayoutValues();
     void ReadMiscellaneousValues();
     void ReadMultiplayerValues();
@@ -59,6 +64,7 @@ private:
     void SaveCoreValues();
     void SaveDataStorageValues();
     void SaveDebuggingValues();
+    void SaveZesteValues();
     void SaveLayoutValues();
     void SaveMiscellaneousValues();
     void SaveMultiplayerValues();

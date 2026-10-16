@@ -62,6 +62,7 @@
 #include "video_core/custom_textures/custom_tex_manager.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
+#include "core/zeste_core.h"
 
 namespace Core {
 
@@ -556,6 +557,8 @@ System::ResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::st
     m_secondary_window = secondary_window;
     m_filepath = filepath;
 
+    Zeste::InstallCoreHooks(*this);
+
     // Reset counters and set time origin to current frame
     [[maybe_unused]] const PerfStats::Results result = GetAndResetPerfStats();
     perf_stats->BeginSystemFrame();
@@ -792,6 +795,9 @@ void System::RegisterImageInterface(std::shared_ptr<Frontend::ImageInterface> im
 }
 
 void System::Shutdown(bool is_deserializing) {
+    if (!is_deserializing) {
+        Zeste::OnSystemShutdown(*this);
+    }
 
 #ifdef ENABLE_SCRIPTING
     // Stop the RPC server before anything its requests may touch is torn down

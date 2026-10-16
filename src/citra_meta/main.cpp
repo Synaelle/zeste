@@ -2,7 +2,9 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <cstring>
 #include <iostream>
+#include <vector>
 
 #include "citra_cli/citra_cli.h"
 #include "common/detached_tasks.h"
@@ -60,7 +62,16 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    if (CitraCLI::CheckForOptions(CitraCLI::cli_capture_optstring, argc, argv)) {
+    // Zeste: the bundled getopt has no long options, so "--strict" would be read as "-s -t -r -i
+    // -c ..." and wrongly trigger the compression CLI. Only short options are captured here.
+    std::vector<char*> short_args{argv[0]};
+    for (int i = 1; i < argc; i++) {
+        if (std::strncmp(argv[i], "--", 2) != 0) {
+            short_args.push_back(argv[i]);
+        }
+    }
+    if (CitraCLI::CheckForOptions(CitraCLI::cli_capture_optstring,
+                                  static_cast<int>(short_args.size()), short_args.data())) {
         return CitraCLI::ParseCommand(argc, argv);
     }
 

@@ -36,6 +36,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     cheats/gateway_cheat.h
     core.cpp
     core.h
+    zeste_core.cpp
+    zeste_core.h
     core_timing.cpp
     core_timing.h
     file_sys/archive_artic.cpp

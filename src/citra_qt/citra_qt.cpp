@@ -115,6 +115,7 @@
 #include "core/movie.h"
 #include "core/savestate.h"
 #include "core/system_titles.h"
+#include "core/zeste_core.h"
 #include "input_common/main.h"
 #include "ui_main.h"
 #include "video_core/gpu.h"
@@ -386,6 +387,42 @@ GMainWindow::GMainWindow(Core::System& system_)
         // Launch game in windowed mode
         if (args[i] == QStringLiteral("--windowed") || args[i] == QStringLiteral("-w")) {
             fullscreen_override = false;
+            continue;
+        }
+
+        // Zeste hardware-accuracy options. They are not written back to the config file.
+        if (args[i] == QStringLiteral("--strict")) {
+            Settings::SetZesteStrictPreset(true);
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--zeste") && i + 1 < args.size()) {
+            for (const QString& name : args[++i].split(QChar::fromLatin1(','))) {
+                if (!Settings::ApplyZesteOptionByName(name.trimmed().toStdString())) {
+                    ShowCommandOutput("Zeste", "Unknown Zeste option: " + name.toStdString());
+                }
+            }
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--seed") && i + 1 < args.size()) {
+            Settings::values.zeste_preempt_seed = args[++i].toUInt(nullptr, 0);
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--break-on-first")) {
+            Settings::values.zeste_break_on_first = true;
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--no-dialogs")) {
+            Settings::values.zeste_no_modal_dialogs = true;
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--zeste-report") && i + 1 < args.size()) {
+            Zeste::SetReportBasePath(args[++i].toStdString());
+            Settings::values.zeste_write_report = true;
             continue;
         }
 
@@ -4024,6 +4061,33 @@ bool GMainWindow::ShowExceptionDialog(Core::System::ResultStatus result,
 
 void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string details) {
     QString status_message;
+
+    // Zeste: "break on first report" pauses emulation without a dialog.
+    if (result == Core::System::ResultStatus::ZesteBreak) {
+        if (emu_thread) {
+            OnPauseGame();
+            message_label->setText(tr("Zeste: paused on the first hardware-accuracy report"));
+            message_label->setVisible(true);
+            message_label_used_for_movie = false;
+            statusBar()->showMessage(QString::fromStdString(details));
+        }
+        return;
+    }
+
+    // Zeste: automated runs never wait on a modal dialog. Errors are logged; emulation stops on
+    // anything that would otherwise ask the user.
+    if (Settings::values.zeste_no_modal_dialogs.GetValue() &&
+        result != Core::System::ResultStatus::ShutdownRequested) {
+        LOG_CRITICAL(Frontend, "Core error {} (no-dialogs mode, stopping emulation): {}",
+                     static_cast<u32>(result), details);
+        if (emu_thread) {
+            ShutdownGame();
+        }
+        if (headless_exit_on_stop) {
+            QCoreApplication::exit(2);
+        }
+        return;
+    }
 
     // Handle exception dialogs separately
     if (result == Core::System::ResultStatus::ErrorCoreExceptionRaised) {

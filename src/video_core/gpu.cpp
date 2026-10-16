@@ -420,6 +420,10 @@ void GPU::WriteReg(VAddr addr, u32 data) {
     }
 }
 
+bool GPU::HasRenderer() const {
+    return impl->renderer != nullptr;
+}
+
 VideoCore::RendererBase& GPU::Renderer() {
     return *impl->renderer;
 }

@@ -278,6 +278,7 @@ void QtConfig::ReadValues() {
         ReadDataStorageValues();
         ReadMiscellaneousValues();
         ReadDebuggingValues();
+        ReadZesteValues();
         ReadWebServiceValues();
         ReadVideoDumpingValues();
     }
@@ -514,6 +515,51 @@ void QtConfig::ReadDataStorageValues() {
         FileUtil::UpdateUserPath(FileUtil::UserPath::SDMCDir, sdmc_dir);
     }
 
+    qt_config->endGroup();
+}
+
+void QtConfig::ReadZesteValues() {
+    qt_config->beginGroup(QStringLiteral("Zeste"));
+    ReadBasicSetting(Settings::values.zeste_strict_pica);
+    ReadBasicSetting(Settings::values.zeste_fixed_point_raster);
+    ReadBasicSetting(Settings::values.zeste_pica_timing);
+    ReadBasicSetting(Settings::values.zeste_cpu_exceptions);
+    ReadBasicSetting(Settings::values.zeste_kernel_fixes);
+    ReadBasicSetting(Settings::values.zeste_cache_detection);
+    ReadBasicSetting(Settings::values.zeste_hw_memory_layout);
+    ReadBasicSetting(Settings::values.zeste_cpu_speed_model);
+    ReadBasicSetting(Settings::values.zeste_preempt_mode);
+    ReadBasicSetting(Settings::values.zeste_preempt_seed);
+    ReadBasicSetting(Settings::values.zeste_strict_priority);
+    ReadBasicSetting(Settings::values.zeste_sd_latency);
+    ReadBasicSetting(Settings::values.zeste_break_on_first);
+    ReadBasicSetting(Settings::values.zeste_report_log_limit);
+    ReadBasicSetting(Settings::values.zeste_write_report);
+    ReadBasicSetting(Settings::values.zeste_no_modal_dialogs);
+    qt_config->endGroup();
+}
+
+void QtConfig::SaveZesteValues() {
+    if (zeste_command_line_override) {
+        return;
+    }
+    qt_config->beginGroup(QStringLiteral("Zeste"));
+    WriteBasicSetting(Settings::values.zeste_strict_pica);
+    WriteBasicSetting(Settings::values.zeste_fixed_point_raster);
+    WriteBasicSetting(Settings::values.zeste_pica_timing);
+    WriteBasicSetting(Settings::values.zeste_cpu_exceptions);
+    WriteBasicSetting(Settings::values.zeste_kernel_fixes);
+    WriteBasicSetting(Settings::values.zeste_cache_detection);
+    WriteBasicSetting(Settings::values.zeste_hw_memory_layout);
+    WriteBasicSetting(Settings::values.zeste_cpu_speed_model);
+    WriteBasicSetting(Settings::values.zeste_preempt_mode);
+    WriteBasicSetting(Settings::values.zeste_preempt_seed);
+    WriteBasicSetting(Settings::values.zeste_strict_priority);
+    WriteBasicSetting(Settings::values.zeste_sd_latency);
+    WriteBasicSetting(Settings::values.zeste_break_on_first);
+    WriteBasicSetting(Settings::values.zeste_report_log_limit);
+    WriteBasicSetting(Settings::values.zeste_write_report);
+    WriteBasicSetting(Settings::values.zeste_no_modal_dialogs);
     qt_config->endGroup();
 }
 
@@ -938,6 +984,7 @@ void QtConfig::SaveValues() {
         SaveDataStorageValues();
         SaveMiscellaneousValues();
         SaveDebuggingValues();
+        SaveZesteValues();
         SaveWebServiceValues();
         SaveVideoDumpingValues();
     }
