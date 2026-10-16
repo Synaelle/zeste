@@ -38,11 +38,6 @@ private:
     void MakeScreenCoords(Vertex& vtx);
 
     /// Processes the triangle defined by the provided vertices.
-    /// Zeste "draw wrapped primitives": rasterizes a primitive that left the fixed-point range at
-    /// its wrapped coordinates, flat-shaded, writing wherever the wrap model says the PICA writes.
-    void ZesteDrawWrapped(const Pica::OutputVertex& v0, const Pica::OutputVertex& v1,
-                          const Pica::OutputVertex& v2);
-
     void ProcessTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2,
                          bool reversed = false);
 
