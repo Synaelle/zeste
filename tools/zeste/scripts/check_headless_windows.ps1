@@ -1,7 +1,9 @@
 # Regression check for --headless: lists the zeste.exe windows Windows considers visible while a
 # headless run is in progress. Expected output: only "exit=0".
-param([string]$Exe = "$PSScriptRoot\..\..\..uildin\Release\zeste.exe",
-      [string]$Rom = "$PSScriptRoot\..	estrom\zeste-tests.3dsx")
+param([string]$Exe = (Join-Path $PSScriptRoot "../../../build/bin/Release/zeste.exe"),
+      [string]$Rom = (Join-Path $PSScriptRoot "../testrom/zeste-tests.3dsx"))
+$Exe = (Resolve-Path $Exe).Path
+$Rom = (Resolve-Path $Rom).Path
 Add-Type @"
 using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic;
 public class W {
@@ -22,6 +24,6 @@ public class W {
   }
 }
 "@
-$p = Start-Process -FilePath "C:\Projects\Zeste\build\bin\Release\zeste.exe" -ArgumentList '--headless','--quit-after','400',$Rom -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList '--headless','--quit-after','400',$Rom -PassThru
 for ($i=0; $i -lt 40; $i++) { Start-Sleep -Milliseconds 100; if ($p.HasExited) { break }; $l=[W]::List([uint32]$p.Id); if ($l.Count -gt 0) { "t=$($i*100)ms visible: $($l -join ' | ')" } }
 if (!$p.HasExited) { $p.WaitForExit(20000) | Out-Null }; "exit=$($p.ExitCode)"

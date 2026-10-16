@@ -667,6 +667,11 @@ GMainWindow::GMainWindow(Core::System& system_)
 
     if (!game_path.isEmpty()) {
         BootGame(game_path);
+        if (headless_mode && !emu_thread) {
+            // Boot failed: nothing to run, leave as soon as the event loop starts.
+            LOG_CRITICAL(Frontend, "Zeste headless: boot failed, exiting with code 1");
+            headless_boot_failed = true;
+        }
     }
 }
 
@@ -1520,6 +1525,16 @@ bool GMainWindow::LoadROM(const QString& filename) {
     const Core::System::ResultStatus result{
         system.Load(*render_window, filename.toStdString(), secondary_window)};
 
+    if (result != Core::System::ResultStatus::Success &&
+        Settings::values.zeste_no_modal_dialogs.GetValue()) {
+        // Zeste: headless / --no-dialogs runs never open the load error dialogs.
+        LOG_CRITICAL(Frontend, "Failed to load {} (result {}), no-dialogs mode",
+                     filename.toStdString(), static_cast<u32>(result));
+        std::cerr << "Failed to load " << filename.toStdString() << " (result "
+                  << static_cast<u32>(result) << ")" << std::endl;
+        return false;
+    }
+
     if (result != Core::System::ResultStatus::Success) {
         QString invalid_format = tr("Invalid application format");
         QString invalid_format_description =
@@ -1619,7 +1634,9 @@ void GMainWindow::BootGame(const QString& filename) {
     // NOTE: We could make this not hardcoded, but it's a temp thing anyway so probs not worth. -OS
     if (Settings::values.graphics_api.GetValue() == Settings::GraphicsAPI::Vulkan &&
         Settings::values.texture_filter.GetValue() == Settings::TextureFilter::Anime4K) {
-        const auto answer = QMessageBox::warning(
+        const auto answer = Settings::values.zeste_no_modal_dialogs.GetValue()
+                                ? QMessageBox::Yes
+                                : QMessageBox::warning(
             this, tr("Incompatible texture filter"),
             tr("The selected texture filter (Anime4K) is not compatible with the Vulkan "
                "renderer.\nThe texture filter will be set to None.\nProceed?"),
@@ -1637,6 +1654,12 @@ void GMainWindow::BootGame(const QString& filename) {
                           filename.startsWith(QString::fromStdString("articinio:/")) ||
                           filename.startsWith(QString::fromStdString("articinin:/"));
 
+    if (!is_artic && filename.endsWith(QStringLiteral(".cia")) &&
+        Settings::values.zeste_no_modal_dialogs.GetValue()) {
+        LOG_CRITICAL(Frontend, "{} is a CIA: use --boot-cia to install and boot it",
+                     filename.toStdString());
+        return;
+    }
     if (!is_artic && filename.endsWith(QStringLiteral(".cia"))) {
         const auto answer = QMessageBox::question(
             this, tr("CIA must be installed before usage"),
@@ -4897,6 +4920,10 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     }
 
     GMainWindow main_window(system);
+    if (GMainWindow::headless_boot_failed) {
+        main_window.close();
+        return 1;
+    }
 
 #ifdef _WIN32
     main_window.UpdateScrollBarStyle();
