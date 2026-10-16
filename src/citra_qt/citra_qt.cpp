@@ -275,6 +275,11 @@ GMainWindow::GMainWindow(Core::System& system_)
     Common::Log::Initialize();
     Common::Log::Start();
 
+    if (headless_mode) {
+        // Must be set before anything shows the window (the constructor boots the game).
+        setAttribute(Qt::WA_DontShowOnScreen);
+    }
+
     Debugger::ToggleConsole();
 
     QStringList args = QApplication::arguments();
