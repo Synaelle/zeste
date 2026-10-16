@@ -15,6 +15,11 @@
 // run continues with the next one.
 //
 // Files: log.txt (readable), results.csv (one line per case), <case>_top.bmp / _bottom.bmp.
+//
+// Version 2: VRAM is read back through a GPU copy into the linear heap (no CPU access to VRAM),
+// case 0 is a positive control (a deliberate write into a canary), cases with depth writes check
+// that the depth buffer did change, the scissor is set inside each frame (citro3d resets it with
+// the viewport), and new cases put a vertex on or next to the camera plane (w = 0).
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -26,7 +31,7 @@
 #include <sys/stat.h>
 #include "vshader_shbin.h"
 
-#define DIR "sdmc:/zeste-calib"
+#define DIR "sdmc:/zeste-calib2"
 #define FRAMES_PER_CASE 180   // ~3 s at 60 fps
 #define GPU_TIMEOUT_MS 2000
 #define MAX_VERTICES 16384
@@ -70,11 +75,12 @@ static void say(const char* fmt, ...) {
 // ----------------------------------------------------------------------------------------------
 // Cases
 
-typedef enum { K_TRI, K_NEAR, K_SPHERE, K_QUADS, K_FIRE } Kind;
+typedef enum { K_TRI, K_NEAR, K_SPHERE, K_QUADS, K_FIRE, K_CONTROL, K_PLANE } Kind;
 
 typedef struct {
     Kind kind;
-    double magnitude; // K_TRI / K_NEAR: screen coordinate reached by the far vertex, in pixels
+    double magnitude; // K_TRI / K_NEAR: screen coordinate reached by the far vertex, in pixels;
+                      // K_PLANE: w of the camera-plane vertex (2 = the vertex at the camera)
     int sign;         // +1 / -1
     float scale;      // K_SPHERE / K_FIRE: model scale
     bool scissor, additive, depth, textured;
@@ -95,10 +101,15 @@ static void add_case(Kind kind, double magnitude, int sign, float scale, bool sc
     c->additive = additive;
     c->depth = depth;
     c->textured = textured;
-    const char* kind_name[] = {"tri", "near", "sphere", "quads", "fire"};
+    const char* kind_name[] = {"tri", "near", "sphere", "quads", "fire", "control", "plane"};
     char base[24];
     if (kind == K_TRI || kind == K_NEAR)
         snprintf(base, sizeof(base), "%s%c%.0f", kind_name[kind], sign > 0 ? 'p' : 'm', magnitude);
+    else if (kind == K_PLANE && magnitude == 2)
+        snprintf(base, sizeof(base), "planecam");
+    else if (kind == K_PLANE)
+        snprintf(base, sizeof(base), "planew%s%.0e", magnitude < 0 ? "m" : "",
+                 magnitude < 0 ? -magnitude : magnitude);
     else if (kind == K_SPHERE || kind == K_FIRE)
         snprintf(base, sizeof(base), "%s%.0f", kind_name[kind], scale);
     else
@@ -110,6 +121,15 @@ static void add_case(Kind kind, double magnitude, int sign, float scale, bool sc
 
 static void build_cases(bool quick) {
     case_count = 0;
+    add_case(K_CONTROL, 0, 1, 1, false, false, false, false);
+    const double plane_w[] = {1e-3, 1e-5, 1e-7, 0, -1e-7, 2};
+    for (int i = 0; i < 6; i++) {
+        add_case(K_PLANE, plane_w[i], 1, 1, false, false, false, false);
+        add_case(K_PLANE, plane_w[i], 1, 1, true, false, false, false);
+        add_case(K_PLANE, plane_w[i], 1, 1, false, true, true, false);
+        if (!quick)
+            add_case(K_PLANE, plane_w[i], 1, 1, false, false, false, true);
+    }
     const double tri_mag[] = {4096, 8192, 16384, 65536, 1000000};
     const double near_mag[] = {4096, 65536, 1000000, 1000000000.0};
     for (int k = 0; k < 2; k++) {
@@ -173,6 +193,8 @@ static C3D_RenderTarget* target2; // a second render target, used only as a cana
 #define CANARY_SIZE (256 * 1024)
 #define BUFFER_SIZE (240 * 400 * 4)
 static u8* block;
+static C3D_FrameBuf control_fb; // 240x256 RGBA8 over the mid canary (positive control)
+static u32* readback;           // linear-heap copy of a VRAM region
 static C3D_Tex texture;
 static Vertex* vbo;
 static int vbo_count;
@@ -203,6 +225,10 @@ static void gpu_init(void) {
     C3D_FrameBufDepth(&target->frameBuf, depth, GPU_RB_DEPTH24_STENCIL8);
     target2 = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
     C3D_RenderTargetSetOutput(target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+    memset(&control_fb, 0, sizeof(control_fb));
+    C3D_FrameBufAttrib(&control_fb, 240, 256, false);
+    C3D_FrameBufColor(&control_fb, color + BUFFER_SIZE, GPU_RB_RGBA8);
+    readback = linearAlloc(BUFFER_SIZE);
 
     region_count = 0;
     regions[region_count++] = (Region){"pre", (u32*)block, CANARY_SIZE, 0x11C0FFEE};
@@ -397,6 +423,40 @@ static void build_geometry(const Case* c, char* desc, size_t desc_size) {
                  vbo_count);
         break;
     }
+    case K_CONTROL:
+        // Full-screen quad, drawn a second time into a framebuffer placed over the "mid" canary
+        // (see the frame loop): the canary check must report it.
+        vtx(-1, -1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 0, 0);
+        vtx(1, -1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 1, 0);
+        vtx(1, 1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 1, 1);
+        vtx(-1, -1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 0, 0);
+        vtx(1, 1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 1, 1);
+        vtx(-1, 1, -0.5f, 1, 0.2f, 1, 0.2f, 1, 0, 1);
+        snprintf(desc, desc_size,
+                 "positive control: full-screen quad, also drawn into a framebuffer over the "
+                 "mid canary (expected: mid changed)");
+        break;
+    case K_PLANE: {
+        // Clip-space triangle with one vertex on or next to the camera plane (w = 0), the two
+        // others on screen. magnitude = that vertex's w; 2 = the vertex at the camera position
+        // (x = y = w = 0), what a projection gives for a vertex at the eye.
+        const double w = c->magnitude;
+        if (w == 2) {
+            vtx(0, 0, 0.1f, 0, 0.3f, 0.9f, 1, 1, 0, 0);
+        } else {
+            vtx(0.5f, 0.2f, (float)(w > 0 ? -0.5 * w : 0), (float)w, 0.3f, 0.9f, 1, 1, 0, 0);
+        }
+        vtx(-0.5f, -0.5f, -0.5f, 1, 0.3f, 0.9f, 1, 1, 4, 0);
+        vtx(-0.5f, 0.5f, -0.5f, 1, 0.3f, 0.9f, 1, 1, 0, 4);
+        if (w == 2)
+            snprintf(desc, desc_size,
+                     "triangle with one vertex at the camera (0,0,0.1,0), two on screen");
+        else
+            snprintf(desc, desc_size,
+                     "triangle with one vertex at w=%g (x/w=%g), two on screen", w,
+                     w != 0 ? 0.5 / w : 0.0);
+        break;
+    }
     case K_QUADS:
         Mtx_PerspTilt(&projection, C3D_AngleFromDegrees(60), C3D_AspectRatioTop, 0.1f, 100000.0f,
                       false);
@@ -409,10 +469,6 @@ static void build_geometry(const Case* c, char* desc, size_t desc_size) {
 
 static void apply_state(const Case* c) {
     C3D_CullFace(GPU_CULL_NONE);
-    if (c->scissor)
-        C3D_SetScissor(GPU_SCISSOR_NORMAL, 40, 80, 200, 320);
-    else
-        C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
     if (c->additive)
         C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ONE);
     else
@@ -461,19 +517,52 @@ static void fill_canaries(void) {
     }
 }
 
+// Copies a VRAM region into the linear heap with the GPU (TextureCopy), so the CPU never reads
+// VRAM through its own mapping and cache.
+static const u32* read_vram(const u32* addr, u32 size) {
+    GSPGPU_InvalidateDataCache(readback, size);
+    GX_TextureCopy((u32*)addr, GX_BUFFER_DIM(size >> 4, 0), readback, GX_BUFFER_DIM(size >> 4, 0),
+                   size, 8);
+    gspWaitForPPF();
+    GSPGPU_InvalidateDataCache(readback, size);
+    return readback;
+}
+
+// Checks that every canary holds its pattern right after the fill (fill and readback work).
+static bool verify_fill(char* out, size_t out_size) {
+    bool ok = true;
+    out[0] = 0;
+    for (int i = 0; i < region_count; i++) {
+        const Region* r = &regions[i];
+        const u32* data = read_vram(r->addr, r->size);
+        u32 bad = 0;
+        for (u32 w = 0; w < r->size / 4; w++)
+            bad += data[w] != r->pattern;
+        if (bad) {
+            ok = false;
+            const size_t len = strlen(out);
+            snprintf(out + len, out_size - len, "%s%s: %lu words differ after the fill",
+                     len ? "; " : "", r->name, bad);
+        }
+    }
+    return ok;
+}
+
 // Returns the number of changed 32-bit words over all regions and writes details to `out`.
-static u32 check_canaries(const Case* c, char* out, size_t out_size) {
+static u32 check_canaries(const Case* c, char* out, size_t out_size, bool* expected_missing) {
     u32 total = 0;
     out[0] = 0;
     for (int i = 0; i < region_count; i++) {
         Region* r = &regions[i];
         // The target's own depth buffer is written legitimately when the case uses depth.
-        const bool expected = c->depth && r->addr == (u32*)target->frameBuf.depthBuf;
-        GSPGPU_InvalidateDataCache(r->addr, r->size);
+        const bool expected =
+            (c->depth && r->addr == (u32*)target->frameBuf.depthBuf) ||
+            (c->kind == K_CONTROL && r->addr == (u32*)control_fb.colorBuf);
+        const u32* data = read_vram(r->addr, r->size);
         u32 changed = 0, first = 0xFFFFFFFF, last = 0;
         const u32 words = r->size / 4;
         for (u32 w = 0; w < words; w++) {
-            if (r->addr[w] != r->pattern) {
+            if (data[w] != r->pattern) {
                 if (first == 0xFFFFFFFF)
                     first = w * 4;
                 last = w * 4;
@@ -482,13 +571,16 @@ static u32 check_canaries(const Case* c, char* out, size_t out_size) {
         }
         if (!expected)
             total += changed;
+        if (expected && !changed)
+            *expected_missing = true; // control: readback broken; depth: nothing drawn, or broken
         const size_t len = strlen(out);
         if (changed)
             snprintf(out + len, out_size - len, "%s%s:%lu words changed (0x%08lX-0x%08lX)%s",
                      len ? "; " : "", r->name, changed, phys(r->addr) + first,
-                     phys(r->addr) + last + 4, expected ? " (expected: depth writes on)" : "");
+                     phys(r->addr) + last + 4, expected ? " (expected)" : "");
         else
-            snprintf(out + len, out_size - len, "%s%s:intact", len ? "; " : "", r->name);
+            snprintf(out + len, out_size - len, "%s%s:intact%s", len ? "; " : "", r->name,
+                     expected ? " (CHANGE EXPECTED)" : "");
     }
     return total;
 }
@@ -620,7 +712,7 @@ int main(int argc, char** argv) {
     mkdir(DIR, 0777);
 
     Progress progress = load_progress();
-    printf("Zeste PICA wrap calibration\n\n");
+    printf("Zeste PICA calibration v2\n\n");
     if (progress.running >= 0) {
         printf("Case %d did not finish last time\n(console froze or was turned off).\n\n",
                progress.running);
@@ -683,6 +775,10 @@ int main(int argc, char** argv) {
         say("case %d %s: %s", i, c->name, desc);
 
         fill_canaries();
+        char fill[200];
+        const bool fill_ok = verify_fill(fill, sizeof(fill));
+        if (!fill_ok)
+            say("case %d %s: canary fill/readback check FAILED: %s", i, c->name, fill);
         apply_state(c);
 
         double gpu_ms_max = 0;
@@ -701,12 +797,20 @@ int main(int argc, char** argv) {
                 gpu_ms_max = waited;
             C3D_RenderTargetClear(target, C3D_CLEAR_COLOR, 0x102040FF, 0);
             C3D_FrameDrawOn(target);
+            // After C3D_FrameDrawOn: setting the viewport disables the scissor.
+            if (c->scissor)
+                C3D_SetScissor(GPU_SCISSOR_NORMAL, 40, 80, 200, 320);
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_modelview, &modelview);
             C3D_BufInfo* buf = C3D_GetBufInfo();
             BufInfo_Init(buf);
             BufInfo_Add(buf, vbo, sizeof(Vertex), 3, 0x210);
             C3D_DrawArrays(GPU_TRIANGLES, 0, vbo_count);
+            if (c->kind == K_CONTROL) {
+                C3D_SetFrameBuf(&control_fb);
+                C3D_SetViewport(0, 0, 240, 256);
+                C3D_DrawArrays(GPU_TRIANGLES, 0, vbo_count);
+            }
             C3D_FrameEnd(0);
         }
         // Health check: the last frame must complete too.
@@ -745,17 +849,25 @@ int main(int argc, char** argv) {
         }
 
         char canary[400];
-        const u32 changed = check_canaries(c, canary, sizeof(canary));
+        bool expected_missing = false;
+        const u32 changed = check_canaries(c, canary, sizeof(canary), &expected_missing);
+        // DEPTH_UNCHANGED: depth writes were on but the depth buffer kept its pattern. Either the
+        // case drew nothing (see the screenshot) or the readback missed the writes.
+        const char* result = !fill_ok                                 ? "READBACK_BROKEN"
+                             : expected_missing && c->kind == K_CONTROL ? "CONTROL_FAILED"
+                             : changed                                ? "OOB_WRITES"
+                             : expected_missing                       ? "DEPTH_UNCHANGED"
+                                                                      : "OK";
         char top[96], bottom[96];
         snprintf(top, sizeof(top), "%s/%s_top.bmp", DIR, c->name);
         snprintf(bottom, sizeof(bottom), "%s/%s_bottom.bmp", DIR, c->name);
         const bool shot_top = save_lcd(0, top);
         const bool shot_bottom = save_lcd(1, bottom);
-        say("case %d %s: %s, GPU max wait %.1f ms, canaries: %s%s", i, c->name,
-            changed ? "OUT-OF-BOUNDS WRITES" : "ok", gpu_ms_max, canary,
+        say("case %d %s: %s, GPU max wait %.1f ms, canaries: %s%s", i, c->name, result,
+            gpu_ms_max, canary,
             shot_top && shot_bottom ? "" : " (screenshot failed)");
-        append("results.csv", "%d,%s,%s,%.1f,%lu,\"%s\",\"%s\"\n", i, c->name,
-               changed ? "OOB_WRITES" : "OK", gpu_ms_max, changed, canary, desc);
+        append("results.csv", "%d,%s,%s,%.1f,%lu,\"%s\",\"%s\"\n", i, c->name, result,
+               gpu_ms_max, changed, canary, desc);
         progress.running = -1;
         save_progress(progress);
     }
