@@ -24,8 +24,9 @@ struct ShaderSetup;
 namespace Pica::Zeste {
 
 /// Screen coordinates (pixels) up to which out-of-range primitives were measured on a New 3DS
-/// (tools/zeste/calib): unclipped triangles up to +-1e6 px and near-plane clipped ones up to
-/// 1e9 px drew exactly like float clipping (no wrap, no drop, no GPU hang). Vertices beyond this
+/// (tools/zeste/calib): unclipped triangles up to +-1e6 px, near-plane clipped ones up to 1e9 px
+/// and triangles with a vertex on the camera plane (w = 0, +-1e-7) drew exactly like float
+/// clipping (no wrap, no drop, no GPU hang, no write outside the buffers). Vertices beyond this
 /// are reported as unverified.
 constexpr float MeasuredRange = 1e9f;
 
