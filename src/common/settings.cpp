@@ -80,6 +80,64 @@ static bool configuring_global = true;
 bool is_temporary_frame_limit;
 double temporary_frame_limit;
 
+void SetZesteStrictPreset(bool enabled) {
+    values.zeste_strict_pica = enabled;
+    values.zeste_fixed_point_raster = enabled;
+    values.zeste_pica_timing = enabled;
+    values.zeste_cpu_exceptions = enabled;
+    values.zeste_kernel_fixes = enabled;
+    values.zeste_cache_detection = enabled;
+    values.zeste_hw_memory_layout = enabled;
+    values.zeste_cpu_speed_model = enabled;
+    values.zeste_preempt_mode = enabled ? 2u : 0u;
+    values.zeste_strict_priority = enabled;
+    values.zeste_sd_latency = enabled;
+}
+
+bool ApplyZesteOptionByName(const std::string& name) {
+    if (name == "strict" || name == "all") {
+        SetZesteStrictPreset(true);
+    } else if (name == "strict_pica") {
+        values.zeste_strict_pica = true;
+    } else if (name == "fixed_point_raster") {
+        values.zeste_fixed_point_raster = true;
+    } else if (name == "pica_timing") {
+        values.zeste_pica_timing = true;
+    } else if (name == "cpu_exceptions") {
+        values.zeste_cpu_exceptions = true;
+    } else if (name == "kernel_fixes") {
+        values.zeste_kernel_fixes = true;
+    } else if (name == "cache_detection") {
+        values.zeste_cache_detection = true;
+    } else if (name == "hw_memory_layout") {
+        values.zeste_hw_memory_layout = true;
+    } else if (name == "cpu_speed_model") {
+        values.zeste_cpu_speed_model = true;
+    } else if (name == "preempt_svc") {
+        values.zeste_preempt_mode = 1u;
+    } else if (name == "preempt_random") {
+        values.zeste_preempt_mode = 2u;
+    } else if (name == "strict_priority") {
+        values.zeste_strict_priority = true;
+    } else if (name == "sd_latency") {
+        values.zeste_sd_latency = true;
+    } else if (name == "none") {
+        SetZesteStrictPreset(false);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool IsAnyZesteOptionEnabled() {
+    return values.zeste_strict_pica.GetValue() || values.zeste_fixed_point_raster.GetValue() ||
+           values.zeste_pica_timing.GetValue() || values.zeste_cpu_exceptions.GetValue() ||
+           values.zeste_kernel_fixes.GetValue() || values.zeste_cache_detection.GetValue() ||
+           values.zeste_hw_memory_layout.GetValue() || values.zeste_cpu_speed_model.GetValue() ||
+           values.zeste_preempt_mode.GetValue() != 0 || values.zeste_strict_priority.GetValue() ||
+           values.zeste_sd_latency.GetValue();
+}
+
 void LogSettings() {
     const auto log_setting = [](std::string_view name, const auto& value) {
         LOG_INFO(Config, "{}: {}", name, value);
@@ -98,6 +156,19 @@ void LogSettings() {
     log_setting("Renderer_DisableSpirvOptimizer", values.disable_spirv_optimizer.GetValue());
     log_setting("Renderer_Debug", values.renderer_debug.GetValue());
     log_setting("Renderer_PicaDebugging", values.pica_debugging.GetValue());
+    log_setting("Zeste_StrictPica", values.zeste_strict_pica.GetValue());
+    log_setting("Zeste_FixedPointRaster", values.zeste_fixed_point_raster.GetValue());
+    log_setting("Zeste_PicaTiming", values.zeste_pica_timing.GetValue());
+    log_setting("Zeste_CpuExceptions", values.zeste_cpu_exceptions.GetValue());
+    log_setting("Zeste_KernelFixes", values.zeste_kernel_fixes.GetValue());
+    log_setting("Zeste_CacheDetection", values.zeste_cache_detection.GetValue());
+    log_setting("Zeste_HwMemoryLayout", values.zeste_hw_memory_layout.GetValue());
+    log_setting("Zeste_CpuSpeedModel", values.zeste_cpu_speed_model.GetValue());
+    log_setting("Zeste_PreemptMode", values.zeste_preempt_mode.GetValue());
+    log_setting("Zeste_PreemptSeed", values.zeste_preempt_seed.GetValue());
+    log_setting("Zeste_StrictPriority", values.zeste_strict_priority.GetValue());
+    log_setting("Zeste_SdLatency", values.zeste_sd_latency.GetValue());
+    log_setting("Zeste_BreakOnFirst", values.zeste_break_on_first.GetValue());
     log_setting("Renderer_UseHwShader", values.use_hw_shader.GetValue());
     log_setting("Renderer_ShadersAccurateMul", values.shaders_accurate_mul.GetValue());
     log_setting("Renderer_UseShaderJit", values.use_shader_jit.GetValue());

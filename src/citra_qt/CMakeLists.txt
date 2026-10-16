@@ -43,6 +43,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     configuration/configure_debug.cpp
     configuration/configure_debug.h
     configuration/configure_debug.ui
+    configuration/configure_zeste.cpp
+    configuration/configure_zeste.h
     configuration/configure_enhancements.cpp
     configuration/configure_enhancements.h
     configuration/configure_enhancements.ui

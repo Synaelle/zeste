@@ -372,6 +372,8 @@ private:
     QSlider* volume_slider = nullptr;
     QTimer status_bar_update_timer;
     bool message_label_used_for_movie = false;
+    /// Zeste: quit the application (with an exit code) when emulation stops (headless runs).
+    bool headless_exit_on_stop = false;
 
     MultiplayerState* multiplayer_state = nullptr;
 

@@ -109,6 +109,7 @@ public:
         ErrorCoreExceptionRaised,    ///< The CPU emulation raised an exception
         ErrorSavestateBuildMismatch, ///< Tried to load savestate from a different Azahar version
         ShutdownRequested,           ///< Emulated program requested a system shutdown
+        ZesteBreak,                  ///< Zeste: paused on the first hardware-accuracy report
         ErrorUnknown                 ///< Any other error
     };
 
@@ -219,6 +220,23 @@ public:
      * Gets a reference to the emulated CPU.
      * @returns A reference to the emulated CPU.
      */
+
+    /// Zeste: safe checks used by the diagnostics context provider.
+    [[nodiscard]] bool HasRunningCore() const {
+        return running_core != nullptr;
+    }
+    [[nodiscard]] bool HasGPU() const {
+        return gpu != nullptr;
+    }
+    [[nodiscard]] bool HasKernel() const {
+        return kernel != nullptr;
+    }
+    [[nodiscard]] const std::string& GetFilePath() const {
+        return m_filepath;
+    }
+    [[nodiscard]] u64 GetTitleID() const {
+        return title_id;
+    }
 
     [[nodiscard]] ARM_Interface& GetRunningCore() {
         return *running_core;

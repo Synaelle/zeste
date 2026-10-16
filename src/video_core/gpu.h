@@ -79,6 +79,7 @@ public:
 
     /// Returns a mutable reference to the renderer.
     [[nodiscard]] VideoCore::RendererBase& Renderer();
+    [[nodiscard]] bool HasRenderer() const;
 
     /// Returns a mutable reference to the PICA GPU.
     [[nodiscard]] Pica::PicaCore& PicaCore();
