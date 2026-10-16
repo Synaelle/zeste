@@ -6,12 +6,15 @@
 #include "common/archives.h"
 #include "common/microprofile.h"
 #include "common/scope_exit.h"
+#include "common/file_util.h"
 #include "common/settings.h"
+#include "common/zeste_report.h"
 #include "core/core.h"
 #include "core/memory.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/pica/pica_core.h"
 #include "video_core/pica/vertex_loader.h"
+#include "video_core/pica/zeste_pica.h"
 #include "video_core/rasterizer_interface.h"
 #include "video_core/shader/shader.h"
 
@@ -77,6 +80,10 @@ PicaCore::PicaCore(Memory::MemorySystem& memory_, std::shared_ptr<DebugContext> 
     const auto submit_vertex = [this](const AttributeBuffer& buffer) {
         const auto add_triangle = [this](const OutputVertex& v0, const OutputVertex& v1,
                                          const OutputVertex& v2) {
+            if (zeste.strict) [[unlikely]] {
+                Zeste::CheckTriangle(regs.internal, v0, v1, v2,
+                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
+            }
             rasterizer->AddTriangle(v0, v1, v2);
         };
         const auto vertex = OutputVertex(regs.internal.rasterizer, buffer);
@@ -260,6 +267,18 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
         return;
     }
 
+    if (Settings::values.zeste_strict_pica.GetValue() && !Zeste::IsGpuReachable(list, size))
+        [[unlikely]] {
+        ::Zeste::ReportF(::Zeste::Category::PicaState, fmt::format("cmdlist@{:08X}", list),
+                         "command list 0x{:08X} ({} bytes) is outside VRAM/FCRAM", list, size);
+    }
+    // Zeste command-list dumps need every register write individually (no batched fast path).
+    const bool zeste_per_write = zeste.dump_recording;
+    if (zeste_per_write) [[unlikely]] {
+        zeste.dump_text +=
+            fmt::format("\n== command list 0x{:08X}, {} bytes ==\n", list, size);
+    }
+
     const u8* head = memory.GetPhysicalPointer(list);
     cmd_list.Reset(list, head, size);
 
@@ -281,7 +300,7 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
         // auto-vectorize this part with SSE4.2, due to the LUT read, instead it just
         // unrolls the loop. Other ISAs and/or compilers may be able to do it,
         // that's why it was decided to keep the structure like this.
-        if (!debug_context) [[likely]] {
+        if (!debug_context && !zeste_per_write) [[likely]] {
             if (!skip_fast_path) {
                 constexpr u32 batch_size = 4;
                 u32 index = cmd_list.current_index;
@@ -339,7 +358,7 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
         if (count == 0)
             continue;
 
-        if (debug_context) [[unlikely]] {
+        if (debug_context || zeste_per_write) [[unlikely]] {
             // Fallback to per word register writes if debugging is
             // enabled.
             for (u32 i = 0; i < count; ++i) {
@@ -962,6 +981,10 @@ void PicaCore::WriteInternalReg(u32 id, u32 value, u32 mask, bool& stop_requeste
         debug_context->OnEvent(DebugContext::Event::PicaCommandLoaded, &id);
     }
 
+    if (zeste.dump_recording) [[unlikely]] {
+        ZesteRecordWrite(id, regs.internal.reg_array[id], mask);
+    }
+
     if (reg_impl_flags_lut[id].NeedsSpecialHandling()) {
         HandleSpecialReg(id, value, stop_requested);
     }
@@ -1007,6 +1030,9 @@ void PicaCore::SubmitImmediate(u32 value) {
 }
 
 void PicaCore::DrawImmediate() {
+    zeste.strict = Settings::values.zeste_strict_pica.GetValue();
+    zeste.draw_cmdlist = cmd_list.addr;
+    zeste.draw_offset = cmd_list.current_index * 4;
     // Compile the vertex shader.
     shader_engine->SetupBatch(vs_setup, regs.internal.vs.main_offset);
 
@@ -1047,6 +1073,19 @@ void PicaCore::DrawImmediate() {
 void PicaCore::DrawArrays(bool is_indexed) {
     MICROPROFILE_SCOPE(GPU_Drawing);
 
+    // Zeste: locate the draw command and run the strict PICA state checks.
+    zeste.strict = Settings::values.zeste_strict_pica.GetValue();
+    zeste.draw_cmdlist = cmd_list.addr;
+    zeste.draw_offset = cmd_list.current_index >= 2 ? (cmd_list.current_index - 2) * 4 : 0;
+    ++zeste.draw_index;
+    if (zeste.strict) [[unlikely]] {
+        Zeste::CheckDrawState(regs.internal, memory, is_indexed,
+                              {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
+    }
+    if (zeste.dump_recording) [[unlikely]] {
+        ZesteRecordDraw(is_indexed);
+    }
+
     // Track vertex in the debug recorder.
     if (debug_context) {
         debug_context->OnEvent(DebugContext::Event::IncomingPrimitiveBatch, nullptr);
@@ -1065,7 +1104,9 @@ void PicaCore::DrawArrays(bool is_indexed) {
         // this, so this is left unimplemented for now. Revisit this when an issue is found in
         // games.
 
-        bool accelerate_draw = Settings::values.use_hw_shader && primitive_assembler.IsEmpty();
+        // Zeste strict PICA checks need the post-vertex-shader vertices on the CPU.
+        bool accelerate_draw = Settings::values.use_hw_shader && primitive_assembler.IsEmpty() &&
+                               !zeste.strict;
         const auto topology = primitive_assembler.GetTopology();
         if (topology == PipelineRegs::TriangleTopology::Shader ||
             topology == PipelineRegs::TriangleTopology::List) {
@@ -1260,5 +1301,60 @@ void PicaCore::CommandList::serialize(Archive& ar, const u32 file_version) {
 }
 
 SERIALIZE_IMPL(PicaCore::CommandList)
+
+void PicaCore::ZesteArmCommandListDump(const std::string& path) {
+    zeste.dump_path = path;
+    zeste.dump_armed = true;
+    LOG_INFO(Zeste, "PICA command list dump armed for the next frame: {}", path);
+}
+
+void PicaCore::ZesteRecordWrite(u32 id, u32 value, u32 mask) {
+    const u32 offset = cmd_list.current_index >= 1 ? (cmd_list.current_index - 1) * 4 : 0;
+    zeste.dump_text += fmt::format("  +0x{:05X}  reg 0x{:03X} <- 0x{:08X}{}\n", offset, id, value,
+                                   mask == 0xF ? "" : fmt::format("  (mask 0x{:X})", mask));
+}
+
+void PicaCore::ZesteRecordDraw(bool is_indexed) {
+    const auto& p = regs.internal.pipeline;
+    zeste.dump_text += fmt::format(
+        "  DRAW #{} at +0x{:05X}: {} {} vertices, first {}, attribute base 0x{:08X}\n"
+        "    register state (non-zero, index=value):\n",
+        zeste.draw_index, zeste.draw_offset, is_indexed ? "indexed" : "arrays",
+        static_cast<u32>(p.num_vertices), static_cast<u32>(p.vertex_offset),
+        p.vertex_attributes.GetPhysicalBaseAddress());
+    u32 on_line = 0;
+    for (u32 i = 0; i < RegsInternal::NUM_REGS; ++i) {
+        const u32 value = regs.internal.reg_array[i];
+        if (value == 0) {
+            continue;
+        }
+        zeste.dump_text += fmt::format("{}{:03X}={:08X}", on_line == 0 ? "    " : " ", i, value);
+        if (++on_line == 8) {
+            zeste.dump_text += "\n";
+            on_line = 0;
+        }
+    }
+    if (on_line != 0) {
+        zeste.dump_text += "\n";
+    }
+}
+
+void PicaCore::ZesteOnVBlank() {
+    zeste.draw_index = 0;
+    if (zeste.dump_recording) {
+        zeste.dump_recording = false;
+        FileUtil::WriteStringToFile(true, zeste.dump_path, zeste.dump_text);
+        LOG_INFO(Zeste, "PICA command lists of one frame written to {} ({} bytes)",
+                 zeste.dump_path, zeste.dump_text.size());
+        zeste.dump_text.clear();
+    }
+    if (zeste.dump_armed) {
+        zeste.dump_armed = false;
+        zeste.dump_recording = true;
+        zeste.dump_text = "Zeste PICA command list dump: one frame (VBlank to VBlank).\n"
+                          "Offsets are byte offsets in the command list; registers are PICA "
+                          "internal register indices (see 3dbrew GPU/Internal Registers).\n";
+    }
+}
 
 } // namespace Pica
