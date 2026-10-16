@@ -20,6 +20,13 @@
 // case 0 is a positive control (a deliberate write into a canary), cases with depth writes check
 // that the depth buffer did change, the scissor is set inside each frame (citro3d resets it with
 // the viewport), and new cases put a vertex on or next to the camera plane (w = 0).
+//
+// Version 3: the fills and readback copies wait through citro3d (C3D_SyncMemoryFill /
+// C3D_SyncTextureCopy). In v2, gspWaitForPSC0/gspWaitForPPF returned at once on an event
+// citro3d's own clears and display transfers had already raised, so the CPU sometimes read the
+// copy before the GPU had written it (changes at the start of a region, in whole cache lines,
+// even right after the fill). The readback buffer is now pre-filled with a marker value: words
+// still holding it are reported as a stale readback, never as a write.
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -31,7 +38,7 @@
 #include <sys/stat.h>
 #include "vshader_shbin.h"
 
-#define DIR "sdmc:/zeste-calib2"
+#define DIR "sdmc:/zeste-calib3"
 #define FRAMES_PER_CASE 180   // ~3 s at 60 fps
 #define GPU_TIMEOUT_MS 2000
 #define MAX_VERTICES 16384
@@ -63,7 +70,7 @@ static void append(const char* file, const char* fmt, ...) {
 }
 
 static void say(const char* fmt, ...) {
-    char buf[256];
+    char buf[1024];
     va_list va;
     va_start(va, fmt);
     vsnprintf(buf, sizeof(buf), fmt, va);
@@ -336,6 +343,9 @@ static void sphere(float radius, float cx, float cy, float cz, float r, float g,
             const int order[6] = {0, 1, 2, 0, 2, 3};
             for (int k = 0; k < 6; k++) {
                 const float* v = q[order[k]];
+                // Same texcoord on all six vertices of a facet, exactly on a texel edge: on
+                // hardware each facet is one flat texel (bands per latitude row); any
+                // interpolation error flips the texel (speckle in Azahar's renderers).
                 vtx(cx + radius * v[0], cy + radius * v[1], cz + radius * v[2], 1, r, g, b, a,
                     (float)j / 4, (float)i / 4);
             }
@@ -418,7 +428,8 @@ static void build_geometry(const Case* c, char* desc, size_t desc_size) {
                     vbo[i].pos[k] /= c->scale; // undo the model scale for the particles
         }
         snprintf(desc, desc_size,
-                 "camera-enclosing double-sided sphere, radius 0.01 x %.0f%s, %d vertices",
+                 "camera-enclosing double-sided sphere, radius 0.01 x %.0f%s, %d vertices "
+                 "(texcoords constant per facet, on a texel edge)",
                  c->scale, c->kind == K_FIRE ? " + 200 particles around the camera" : "",
                  vbo_count);
         break;
@@ -511,19 +522,21 @@ static bool begin_frame_with_timeout(double* waited_ms) {
 static void fill_canaries(void) {
     for (int i = 0; i < region_count; i++) {
         Region* r = &regions[i];
-        GX_MemoryFill(r->addr, r->pattern, (u32*)((u8*)r->addr + r->size),
-                      GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH, NULL, 0, NULL, 0);
-        gspWaitForPSC0();
+        C3D_SyncMemoryFill(r->addr, r->pattern, (u32*)((u8*)r->addr + r->size),
+                           GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH, NULL, 0, NULL, 0);
     }
 }
 
 // Copies a VRAM region into the linear heap with the GPU (TextureCopy), so the CPU never reads
 // VRAM through its own mapping and cache.
+#define READBACK_MARKER 0xA5A5A5A5u // no canary pattern uses it
+
 static const u32* read_vram(const u32* addr, u32 size) {
-    GSPGPU_InvalidateDataCache(readback, size);
-    GX_TextureCopy((u32*)addr, GX_BUFFER_DIM(size >> 4, 0), readback, GX_BUFFER_DIM(size >> 4, 0),
-                   size, 8);
-    gspWaitForPPF();
+    for (u32 w = 0; w < size / 4; w++)
+        readback[w] = READBACK_MARKER;
+    GSPGPU_FlushDataCache(readback, size);
+    C3D_SyncTextureCopy((u32*)addr, GX_BUFFER_DIM(size >> 4, 0), readback,
+                        GX_BUFFER_DIM(size >> 4, 0), size, 8);
     GSPGPU_InvalidateDataCache(readback, size);
     return readback;
 }
@@ -535,21 +548,25 @@ static bool verify_fill(char* out, size_t out_size) {
     for (int i = 0; i < region_count; i++) {
         const Region* r = &regions[i];
         const u32* data = read_vram(r->addr, r->size);
-        u32 bad = 0;
-        for (u32 w = 0; w < r->size / 4; w++)
+        u32 bad = 0, stale = 0;
+        for (u32 w = 0; w < r->size / 4; w++) {
             bad += data[w] != r->pattern;
+            stale += data[w] == READBACK_MARKER;
+        }
         if (bad) {
             ok = false;
             const size_t len = strlen(out);
-            snprintf(out + len, out_size - len, "%s%s: %lu words differ after the fill",
-                     len ? "; " : "", r->name, bad);
+            snprintf(out + len, out_size - len,
+                     "%s%s: %lu words differ after the fill (%lu still hold the readback marker)",
+                     len ? "; " : "", r->name, bad, stale);
         }
     }
     return ok;
 }
 
 // Returns the number of changed 32-bit words over all regions and writes details to `out`.
-static u32 check_canaries(const Case* c, char* out, size_t out_size, bool* expected_missing) {
+static u32 check_canaries(const Case* c, char* out, size_t out_size, bool* expected_missing,
+                          u32* stale_words) {
     u32 total = 0;
     out[0] = 0;
     for (int i = 0; i < region_count; i++) {
@@ -559,10 +576,16 @@ static u32 check_canaries(const Case* c, char* out, size_t out_size, bool* expec
             (c->depth && r->addr == (u32*)target->frameBuf.depthBuf) ||
             (c->kind == K_CONTROL && r->addr == (u32*)control_fb.colorBuf);
         const u32* data = read_vram(r->addr, r->size);
-        u32 changed = 0, first = 0xFFFFFFFF, last = 0;
+        u32 changed = 0, first = 0xFFFFFFFF, last = 0, first_value = 0, stale = 0;
         const u32 words = r->size / 4;
         for (u32 w = 0; w < words; w++) {
+            if (data[w] == READBACK_MARKER) {
+                stale++;
+                continue;
+            }
             if (data[w] != r->pattern) {
+                if (first == 0xFFFFFFFF)
+                    first_value = data[w];
                 if (first == 0xFFFFFFFF)
                     first = w * 4;
                 last = w * 4;
@@ -573,11 +596,14 @@ static u32 check_canaries(const Case* c, char* out, size_t out_size, bool* expec
             total += changed;
         if (expected && !changed)
             *expected_missing = true; // control: readback broken; depth: nothing drawn, or broken
+        if (stale)
+            *stale_words += stale;
         const size_t len = strlen(out);
         if (changed)
-            snprintf(out + len, out_size - len, "%s%s:%lu words changed (0x%08lX-0x%08lX)%s",
+            snprintf(out + len, out_size - len,
+                     "%s%s:%lu words changed (0x%08lX-0x%08lX, first value 0x%08lX)%s",
                      len ? "; " : "", r->name, changed, phys(r->addr) + first,
-                     phys(r->addr) + last + 4, expected ? " (expected)" : "");
+                     phys(r->addr) + last + 4, first_value, expected ? " (expected)" : "");
         else
             snprintf(out + len, out_size - len, "%s%s:intact%s", len ? "; " : "", r->name,
                      expected ? " (CHANGE EXPECTED)" : "");
@@ -712,7 +738,7 @@ int main(int argc, char** argv) {
     mkdir(DIR, 0777);
 
     Progress progress = load_progress();
-    printf("Zeste PICA calibration v2\n\n");
+    printf("Zeste PICA calibration v3\n\n");
     if (progress.running >= 0) {
         printf("Case %d did not finish last time\n(console froze or was turned off).\n\n",
                progress.running);
@@ -848,12 +874,17 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        char canary[400];
+        char canary[640];
         bool expected_missing = false;
-        const u32 changed = check_canaries(c, canary, sizeof(canary), &expected_missing);
+        u32 stale_words = 0;
+        const u32 changed =
+            check_canaries(c, canary, sizeof(canary), &expected_missing, &stale_words);
+        if (stale_words)
+            say("case %d %s: %lu words still held the readback marker (stale readback)", i,
+                c->name, stale_words);
         // DEPTH_UNCHANGED: depth writes were on but the depth buffer kept its pattern. Either the
         // case drew nothing (see the screenshot) or the readback missed the writes.
-        const char* result = !fill_ok                                 ? "READBACK_BROKEN"
+        const char* result = !fill_ok || stale_words                  ? "READBACK_BROKEN"
                              : expected_missing && c->kind == K_CONTROL ? "CONTROL_FAILED"
                              : changed                                ? "OOB_WRITES"
                              : expected_missing                       ? "DEPTH_UNCHANGED"
