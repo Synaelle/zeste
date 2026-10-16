@@ -13,6 +13,8 @@
 #include "core/file_sys/disk_archive.h"
 #include "core/file_sys/errors.h"
 
+#include "core/zeste_timing.h"
+
 SERIALIZE_EXPORT_IMPL(FileSys::DiskFile)
 SERIALIZE_EXPORT_IMPL(FileSys::DiskDirectory)
 
@@ -29,6 +31,7 @@ ResultVal<std::size_t> DiskFile::Read(const u64 offset, const std::size_t length
 
 ResultVal<std::size_t> DiskFile::Write(const u64 offset, const std::size_t length, const bool flush,
                                        const bool update_timestamp, const u8* buffer) {
+    Zeste::Timing::AddSdDelayNs(Zeste::Timing::SdWriteNs(length));
     if (!mode.write_flag)
         return ResultInvalidOpenFlags;
 
@@ -53,7 +56,13 @@ bool DiskFile::Close() {
     return file->Close();
 }
 
-DiskDirectory::DiskDirectory(const std::string& path) {
+DiskDirectory::DiskDirectory(const std::string& path)
+    : zeste_path{path}, zeste_open_sequence{Zeste::Timing::SdDeleteSequence()} {
+    while (!zeste_path.empty() && (zeste_path.back() == '/' || zeste_path.back() == '\\')) {
+        zeste_path.pop_back();
+    }
+    Zeste::Timing::OnSdDirectoryOpen(zeste_path);
+    zeste_listed = true;
     directory.size = FileUtil::ScanDirectoryTree(path, directory);
     directory.isDirectory = true;
     children_iterator = directory.children.begin();
@@ -61,6 +70,7 @@ DiskDirectory::DiskDirectory(const std::string& path) {
 
 u32 DiskDirectory::Read(const u32 count, Entry* entries) {
     u32 entries_read = 0;
+    Zeste::Timing::OnSdDirectoryRead(zeste_path, zeste_open_sequence);
 
     while (entries_read < count && children_iterator != directory.children.cend()) {
         const FileUtil::FSTEntry& file = *children_iterator;

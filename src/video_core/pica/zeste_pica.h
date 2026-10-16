@@ -18,6 +18,7 @@ class MemorySystem;
 
 namespace Pica {
 struct RegsInternal;
+struct ShaderSetup;
 }
 
 namespace Pica::Zeste {
@@ -62,6 +63,24 @@ struct DrawRange {
 };
 void CollectDrawRanges(const RegsInternal& regs, Memory::MemorySystem& memory, bool is_indexed,
                        std::vector<DrawRange>& reads, std::vector<DrawRange>& writes);
+
+/// PICA cost model (zeste_pica_timing), in GPU cycles at 268 MHz. Calibrated on New 3DS
+/// measurements (openmw3ds PORTING_NOTES): ~0.8 ms per 1000 triangles with a 260-instruction
+/// vertex shader, ~1000 draws or ~200k short-shader triangles per 33 ms frame.
+constexpr double CyclesPerDraw = 1500.0;
+constexpr double CyclesPerShaderInstructionPerVertex = 0.8;
+constexpr double CyclesPerTriangle = 30.0;
+constexpr double CyclesPerFragment = 1.0;
+constexpr double GpuClockHz = 268111856.0;
+
+/// Number of vertex shader instructions from the entry point to the first END.
+u32 VertexShaderLength(const RegsInternal& regs, const ShaderSetup& vs);
+/// Cost of a draw call before rasterization (command overhead and vertex shading).
+double DrawCostCycles(const RegsInternal& regs, const ShaderSetup& vs, u32 num_vertices);
+/// Cost of one triangle: setup plus one cycle per covered pixel (near-plane clipped, bounded by
+/// the framebuffer).
+double TriangleCostCycles(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
+                          const OutputVertex& v2);
 
 /// True when the physical address is in memory the GPU can reach (VRAM or FCRAM).
 bool IsGpuReachable(PAddr addr, u32 size);

@@ -383,6 +383,8 @@ public:
 private:
     struct ZesteState {
         bool strict = false;    ///< Strict PICA checks active for the current draw
+        bool timing = false;    ///< PICA cost model active for the current draw
+        double gpu_cycles = 0;  ///< Modelled GPU work since the last P3D interrupt
         u32 draw_index = 0;     ///< Draws since the last VBlank
         u32 draw_cmdlist = 0;   ///< Command list address of the current draw
         u32 draw_offset = 0;    ///< Offset of the draw command in that list

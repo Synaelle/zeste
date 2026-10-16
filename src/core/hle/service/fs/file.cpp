@@ -15,6 +15,7 @@
 #include "core/hle/kernel/event.h"
 #include "core/hle/kernel/server_session.h"
 #include "core/hle/service/fs/file.h"
+#include "core/zeste_timing.h"
 
 SERIALIZE_EXPORT_IMPL(Service::FS::File)
 SERIALIZE_EXPORT_IMPL(Service::FS::FileSessionSlot)
@@ -214,6 +215,9 @@ void File::Write(Kernel::HLERequestContext& ctx) {
             rb.Push<u32>(static_cast<u32>(*written));
         }
         rb.PushMappedBuffer(buffer);
+        if (const u64 ns = Zeste::Timing::TakeSdDelayNs(); ns != 0) {
+            ctx.SleepClientThread("zeste::sd_write", std::chrono::nanoseconds{ns}, nullptr);
+        }
         return;
     }
 

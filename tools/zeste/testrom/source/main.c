@@ -12,6 +12,7 @@
 //   L      : unlocked counter from 2 cores        (race exposure: lost updates)
 //   R      : oversized near-plane triangle + NaN vertex (strict PICA)
 //   DOWN   : low-priority thread starved by a busy main thread (starvation report)
+//   SELECT : SD card timings and the remove_all pattern (SD latency model)
 //   START  : exit
 #include <3ds.h>
 #include <citro3d.h>
@@ -19,6 +20,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "vshader_shbin.h"
 
 #define CLEAR_COLOR 0x203040FF
@@ -262,6 +266,61 @@ static void test_starvation(void) {
     }
 }
 
+static double ms_since(u64 start) {
+    return (double)(svcGetSystemTick() - start) / (SYSCLOCK_ARM11 / 1000.0);
+}
+
+static void test_sd(void) {
+    say("[SELECT] SD card timings");
+    mkdir("sdmc:/zeste-test", 0777);
+    u64 t = svcGetSystemTick();
+    FILE* f = fopen("sdmc:/zeste-test/data.bin", "wb");
+    say("[SELECT] create file: %.1f ms", ms_since(t));
+    static u8 buf[64 * 1024];
+    memset(buf, 0x5A, sizeof(buf));
+    t = svcGetSystemTick();
+    for (int i = 0; i < 16; i++)
+        fwrite(buf, 1, sizeof(buf), f);
+    fclose(f);
+    say("[SELECT] write 1 MB: %.1f ms", ms_since(t));
+    f = fopen("sdmc:/zeste-test/data.bin", "rb");
+    setvbuf(f, NULL, _IONBF, 0);
+    t = svcGetSystemTick();
+    for (int i = 0; i < 64; i++)
+        fread(buf, 1, 1024, f);
+    say("[SELECT] 64 reads of 1 KB: %.1f ms", ms_since(t));
+    t = svcGetSystemTick();
+    fread(buf, 1, sizeof(buf), f);
+    say("[SELECT] 1 read of 64 KB: %.1f ms", ms_since(t));
+    fclose(f);
+    t = svcGetSystemTick();
+    mkdir("sdmc:/zeste-test/dir", 0777);
+    say("[SELECT] mkdir: %.1f ms", ms_since(t));
+    for (int i = 0; i < 3; i++) {
+        char name[64];
+        snprintf(name, sizeof(name), "sdmc:/zeste-test/dir/f%d", i);
+        FILE* e = fopen(name, "wb");
+        if (e)
+            fclose(e);
+    }
+    // remove_all pattern: delete entries while the directory is still being iterated.
+    DIR* d = opendir("sdmc:/zeste-test/dir");
+    struct dirent* ent;
+    int removed = 0;
+    while (d && (ent = readdir(d)) != NULL && removed < 10) {
+        char name[300];
+        snprintf(name, sizeof(name), "sdmc:/zeste-test/dir/%s", ent->d_name);
+        unlink(name);
+        removed++;
+    }
+    if (d)
+        closedir(d);
+    rmdir("sdmc:/zeste-test/dir");
+    unlink("sdmc:/zeste-test/data.bin");
+    rmdir("sdmc:/zeste-test");
+    say("[SELECT] deleted %d entries while iterating (remove_all pattern)", removed);
+}
+
 static void test_near_plane(void) {
     say("[R] near-plane triangle with huge screen extent + NaN vertex");
     // One vertex just in front of the near plane, two far behind the camera.
@@ -287,6 +346,7 @@ int main(int argc, char** argv) {
     say("A texbind(NULL)  B stack overflow  X null write+handler");
     say("Y unflushed VBO  L race  R near plane  START exit");
 
+    int frames = 0;
     while (aptMainLoop()) {
         hidScanInput();
         u32 kDown = hidKeysDown();
@@ -306,8 +366,13 @@ int main(int argc, char** argv) {
             test_near_plane();
         if (kDown & KEY_DOWN)
             test_starvation();
+        if (kDown & KEY_SELECT)
+            test_sd();
         if (!kDown)
             draw_vertices(small_tri, 3, true, false);
+        if (++frames == 60)
+            say("[info] C3D_GetDrawingTime after 60 frames: %.3f ms (Azahar ~0.25 constant)",
+                C3D_GetDrawingTime());
     }
 
     shaderProgramFree(&program);

@@ -85,6 +85,9 @@ PicaCore::PicaCore(Memory::MemorySystem& memory_, std::shared_ptr<DebugContext> 
                 Zeste::CheckTriangle(regs.internal, v0, v1, v2,
                                      {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
             }
+            if (zeste.timing) [[unlikely]] {
+                zeste.gpu_cycles += Zeste::TriangleCostCycles(regs.internal, v0, v1, v2);
+            }
             rasterizer->AddTriangle(v0, v1, v2);
         };
         const auto vertex = OutputVertex(regs.internal.rasterizer, buffer);
@@ -602,8 +605,13 @@ void PicaCore::HandleSpecialReg(u32 id, u32 value, bool& stop_requested) {
         // TODO(PabloMK7): This logic is not fully accurate, but close enough:
         // https://problemkaputt.de/gbatek-3ds-gpu-internal-registers-finalize-interrupt-registers.htm
         if (any_byte_match(regs.internal.reg_array[id], regs.internal.irq_compare)) [[likely]] {
-            signal_interrupt(Service::GSP::InterruptId::P3D,
-                             delay_generator.CalculateAndResetDelay());
+            u64 delay = delay_generator.CalculateAndResetDelay();
+            if (Settings::values.zeste_pica_timing.GetValue()) {
+                // Zeste PICA cost model: the interrupt fires when the modelled work is done.
+                delay = static_cast<u64>(zeste.gpu_cycles * 1e9 / Zeste::GpuClockHz);
+                zeste.gpu_cycles = 0;
+            }
+            signal_interrupt(Service::GSP::InterruptId::P3D, delay);
             if (regs.internal.irq_autostop) [[likely]] {
                 stop_requested = true;
             }
@@ -1077,9 +1085,14 @@ void PicaCore::DrawArrays(bool is_indexed) {
 
     // Zeste: locate the draw command and run the strict PICA state checks.
     zeste.strict = Settings::values.zeste_strict_pica.GetValue();
+    zeste.timing = Settings::values.zeste_pica_timing.GetValue();
     zeste.draw_cmdlist = cmd_list.addr;
     zeste.draw_offset = cmd_list.current_index >= 2 ? (cmd_list.current_index - 2) * 4 : 0;
     ++zeste.draw_index;
+    if (zeste.timing) [[unlikely]] {
+        zeste.gpu_cycles +=
+            Zeste::DrawCostCycles(regs.internal, vs_setup, regs.internal.pipeline.num_vertices);
+    }
     if (zeste.strict) [[unlikely]] {
         Zeste::CheckDrawState(regs.internal, memory, is_indexed,
                               {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
@@ -1118,7 +1131,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
 
         // Zeste strict PICA checks need the post-vertex-shader vertices on the CPU.
         bool accelerate_draw = Settings::values.use_hw_shader && primitive_assembler.IsEmpty() &&
-                               !zeste.strict;
+                               !zeste.strict && !zeste.timing;
         const auto topology = primitive_assembler.GetTopology();
         if (topology == PipelineRegs::TriangleTopology::Shader ||
             topology == PipelineRegs::TriangleTopology::List) {

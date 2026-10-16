@@ -17,6 +17,7 @@
 #include "core/file_sys/directory_backend.h"
 #include "core/file_sys/file_backend.h"
 #include "core/hle/result.h"
+#include "core/zeste_timing.h"
 
 namespace FileSys {
 
@@ -67,11 +68,18 @@ public:
     u32 Read(u32 count, Entry* entries) override;
 
     bool Close() override {
+        if (zeste_listed) {
+            zeste_listed = false;
+            Zeste::Timing::OnSdDirectoryClose(zeste_path);
+        }
         return true;
     }
 
 protected:
     FileUtil::FSTEntry directory{};
+    std::string zeste_path;       ///< Zeste: host path, for remove_all detection
+    u64 zeste_open_sequence = 0;  ///< Zeste: deletion counter when the listing was opened
+    bool zeste_listed = false;    ///< Zeste: registered as an open listing
 
     // We need to remember the last entry we returned, so a subsequent call to Read will continue
     // from the next one.  This iterator will always point to the next unread entry.
