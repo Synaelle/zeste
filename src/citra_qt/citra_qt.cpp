@@ -4182,9 +4182,14 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         LOG_CRITICAL(Frontend, "Core error {} (no-dialogs mode, stopping emulation): {}",
                      static_cast<u32>(result), details);
         headless_exit_code = 2; // Only used when the process exits with emulation.
-        if (emu_thread) {
-            ShutdownGame();
-        }
+        // The emulation thread follows ErrorThrown with a blocking DebugModeEntered signal: let
+        // the event loop deliver it before joining the thread in ShutdownGame (no dialog loop
+        // does it for us here).
+        QTimer::singleShot(250, this, [this] {
+            if (emu_thread) {
+                ShutdownGame();
+            }
+        });
         return;
     }
 

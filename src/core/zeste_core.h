@@ -28,6 +28,10 @@ std::string DefaultReportBasePath();
 /// Overrides the report base path (command line `--zeste-report`).
 void SetReportBasePath(const std::string& path);
 
+/// True (once) when "break on first" just fired: the exception dispatcher then leaves the PC on
+/// the faulting instruction so the debugger/pause shows it.
+bool ConsumeBreakRequest();
+
 /// Current emulated frame (VBlank count of the renderer), 0 when no GPU exists.
 u64 CurrentFrame(Core::System& system);
 

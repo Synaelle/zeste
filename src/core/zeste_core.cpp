@@ -24,6 +24,7 @@ namespace {
 std::string g_report_base_path;
 std::string g_title;
 bool g_installed = false;
+bool g_break_requested = false;
 } // Anonymous namespace
 
 u64 CurrentFrame(Core::System& system) {
@@ -46,6 +47,12 @@ std::string DefaultReportBasePath() {
 
 void SetReportBasePath(const std::string& path) {
     g_report_base_path = path;
+}
+
+bool ConsumeBreakRequest() {
+    const bool requested = g_break_requested;
+    g_break_requested = false;
+    return requested;
 }
 
 void InstallCoreHooks(Core::System& system) {
@@ -78,6 +85,7 @@ void InstallCoreHooks(Core::System& system) {
     });
 
     SetBreakHandler([&system](Category, const std::string& text) {
+        g_break_requested = true;
 #ifdef ENABLE_GDBSTUB
         if (GDBStub::IsConnected()) {
             GDBStub::Break(5); // SIGTRAP

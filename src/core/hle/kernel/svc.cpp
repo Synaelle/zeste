@@ -426,6 +426,7 @@ private:
     Result ControlMemory(u32* out_addr, u32 addr0, u32 addr1, u32 size, u32 operation,
                          u32 permissions);
     void ExitProcess();
+    void GetCurrentProcessorNumber();
     Result TerminateProcess(Handle handle);
     Result MapMemoryBlock(Handle handle, u32 addr, u32 permissions, u32 other_permissions);
     Result UnmapMemoryBlock(Handle handle, u32 addr);
@@ -577,6 +578,16 @@ Result SVC::ControlMemory(u32* out_addr, u32 addr0, u32 addr1, u32 size, u32 ope
     }
 
     return ResultSuccess;
+}
+
+/// svcGetProcessorID (0x11). Azahar leaves it unimplemented (r0 keeps whatever it held, which is
+/// what applications read back). With Zeste kernel fixes it returns the core the thread runs on.
+void SVC::GetCurrentProcessorNumber() {
+    if (!Settings::values.zeste_kernel_fixes.GetValue()) {
+        LOG_ERROR(Kernel_SVC, "unimplemented SVC function 11 GetCurrentProcessorNumber(..)");
+        return;
+    }
+    SetReg(0, system.GetRunningCore().GetID());
 }
 
 void SVC::ExitProcess() {
@@ -2255,7 +2266,7 @@ const std::array<SVC::FunctionDef, 180> SVC::SVC_Table{{
     {0x0E, nullptr, "SetThreadAffinityMask", 1000},
     {0x0F, nullptr, "GetThreadIdealProcessor", 1000},
     {0x10, nullptr, "SetThreadIdealProcessor", 1000},
-    {0x11, nullptr, "GetCurrentProcessorNumber", 1000},
+    {0x11, &SVC::GetCurrentProcessorNumber, "GetCurrentProcessorNumber", 1000},
     {0x12, nullptr, "Run", 1000},
     {0x13, &SVC::Wrap<&SVC::CreateMutex, 0x13>, "CreateMutex", 1000},
     {0x14, &SVC::Wrap<&SVC::ReleaseMutex, 0x14>, "ReleaseMutex", 1324},
