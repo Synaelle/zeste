@@ -131,6 +131,18 @@ void ConfigureDialog::ApplyConfiguration() {
 
 Q_DECLARE_METATYPE(QList<QWidget*>);
 
+void ConfigureDialog::ShowZestePage() {
+    for (int row = 0; row < ui->selectorList->count(); ++row) {
+        const auto tabs =
+            qvariant_cast<QList<QWidget*>>(ui->selectorList->item(row)->data(Qt::UserRole));
+        if (tabs.contains(zeste_tab.get())) {
+            ui->selectorList->setCurrentRow(row);
+            ui->tabWidget->setCurrentWidget(zeste_tab.get());
+            return;
+        }
+    }
+}
+
 void ConfigureDialog::PopulateSelectionList() {
     ui->selectorList->clear();
 

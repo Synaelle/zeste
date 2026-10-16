@@ -385,6 +385,8 @@ private:
     /// Zeste: quit the application (with an exit code) when emulation stops (headless runs).
     bool headless_exit_on_stop = false;
     int headless_exit_code = 0;
+    /// Zeste: the next OnConfigure opens on the Zeste page.
+    bool configure_open_zeste = false;
 
     MultiplayerState* multiplayer_state = nullptr;
 

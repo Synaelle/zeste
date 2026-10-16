@@ -1274,7 +1274,10 @@ void GMainWindow::ConnectMenuEvents() {
     connect(zeste_menu->addAction(tr("&Inaccuracy report...")), &QAction::triggered, this,
             [this] { (new ZesteReportDialog(this))->show(); });
     connect(zeste_menu->addAction(tr("&Hardware accuracy settings...")), &QAction::triggered,
-            this, &GMainWindow::OnConfigure);
+            this, [this] {
+                configure_open_zeste = true;
+                OnConfigure();
+            });
     zeste_menu->addSeparator();
     connect(zeste_menu->addAction(tr("Enable &strict hardware mode")), &QAction::triggered, this,
             [this] {
@@ -3265,6 +3268,10 @@ void GMainWindow::OnConfigure() {
                                     !multiplayer_state->IsHostingPublicRoom());
     connect(&configureDialog, &ConfigureDialog::LanguageChanged, this,
             &GMainWindow::OnLanguageChanged);
+    if (configure_open_zeste) {
+        configure_open_zeste = false;
+        configureDialog.ShowZestePage();
+    }
     auto old_theme = UISettings::values.theme;
     const int old_input_profile_index = Settings::values.current_input_profile_index;
     const auto old_input_profiles = Settings::values.input_profiles;

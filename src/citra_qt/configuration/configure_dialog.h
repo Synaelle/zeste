@@ -39,6 +39,9 @@ class ConfigureDialog : public QDialog {
     Q_OBJECT
 
 public:
+    /// Zeste: opens the dialog on the Zeste / Hardware accuracy page.
+    void ShowZestePage();
+
     explicit ConfigureDialog(QWidget* parent, HotkeyRegistry& registry, Core::System& system,
                              QString gl_renderer, std::span<const QString> physical_devices,
                              bool enable_web_config = true);
