@@ -64,6 +64,7 @@
 #include "video_core/renderer_base.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_core.h"
+#include "core/zeste_sched.h"
 
 namespace Core {
 
@@ -290,6 +291,8 @@ System::ResultStatus System::RunLoop(bool tight_loop) {
             kernel->GetThreadManager(cpu_core->GetID()).Reschedule();
             max_slice = std::min(max_slice, cpu_core->GetTimer().GetMaxSliceLength());
         }
+        // Zeste race exposure (mode 2): random slice length for this round.
+        max_slice = Zeste::Sched::AdjustSlice(max_slice);
         for (auto& cpu_core : cpu_cores) {
             cpu_core->GetTimer().SetNextSlice(max_slice);
             auto start_ticks = cpu_core->GetTimer().GetTicks();
@@ -684,7 +687,10 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window,
     gpu->SetInterruptHandler([gsp](Service::GSP::InterruptId interrupt_id, u64 wait_delay_ns) {
         gsp->SignalInterrupt(interrupt_id, wait_delay_ns);
     });
-    gpu->SetVBlankHook([this] { Zeste::Automation::OnVBlank(*this); });
+    gpu->SetVBlankHook([this] {
+        Zeste::Automation::OnVBlank(*this);
+        Zeste::Sched::OnVBlank(*this);
+    });
 
     auto plg_ldr = Service::PLGLDR::GetService(*this);
     if (plg_ldr) {
@@ -1041,7 +1047,10 @@ void System::serialize(Archive& ar, const unsigned int file_version) {
         gpu->SetInterruptHandler([gsp](Service::GSP::InterruptId interrupt_id, u64 wait_delay_ns) {
             gsp->SignalInterrupt(interrupt_id, wait_delay_ns);
         });
-        gpu->SetVBlankHook([this] { Zeste::Automation::OnVBlank(*this); });
+        gpu->SetVBlankHook([this] {
+        Zeste::Automation::OnVBlank(*this);
+        Zeste::Sched::OnVBlank(*this);
+    });
 
         // Apply per program settings and switch the shader cache to the title running when the
         // savestate was created.

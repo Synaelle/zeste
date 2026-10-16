@@ -9,8 +9,9 @@
 //   B      : recursive stack overflow            (fault below the main stack)
 //   X      : write to NULL with threadOnException installed (handler must run)
 //   Y      : unflushed transfer source           (CPU data cache detection)
-//   L      : unlocked linearAlloc from 4 threads (race exposure)
+//   L      : unlocked counter from 2 cores        (race exposure: lost updates)
 //   R      : oversized near-plane triangle + NaN vertex (strict PICA)
+//   DOWN   : low-priority thread starved by a busy main thread (starvation report)
 //   START  : exit
 #include <3ds.h>
 #include <citro3d.h>
@@ -206,33 +207,59 @@ static void test_unflushed(void) {
     linearFree(dst);
 }
 
-#define RACE_THREADS 4
-#define RACE_ITERS 2000
+#define RACE_ITERS 1000000
+static volatile u32 race_counter;
 static volatile bool race_go;
 static void race_thread(void* arg) {
     while (!race_go)
         svcSleepThread(1000);
-    for (int i = 0; i < RACE_ITERS; i++) {
-        void* p = linearAlloc(64 + (i & 63));
-        if (p)
-            linearFree(p);
-    }
+    for (u32 i = 0; i < RACE_ITERS; i++)
+        race_counter = race_counter + 1; // unlocked read-modify-write
 }
 
 static void test_race(void) {
-    say("[L] %d threads x %d unlocked linearAlloc/linearFree", RACE_THREADS, RACE_ITERS);
-    Thread threads[RACE_THREADS];
+    // Two threads on different cores increment a shared counter without a lock. Every lost update
+    // is a race that happened. On hardware both cores run truly in parallel.
+    say("[L] 2 threads (core 0 and core 1) x %d unlocked increments", RACE_ITERS);
+    race_counter = 0;
     race_go = false;
-    for (int i = 0; i < RACE_THREADS; i++)
-        threads[i] = threadCreate(race_thread, NULL, 0x2000, 0x30, i & 1 ? 1 : 0, false);
+    Thread a = threadCreate(race_thread, NULL, 0x2000, 0x31, 0, false);
+    Thread b = threadCreate(race_thread, NULL, 0x2000, 0x31, 1, false);
     race_go = true;
-    for (int i = 0; i < RACE_THREADS; i++) {
-        if (threads[i]) {
-            threadJoin(threads[i], U64_MAX);
-            threadFree(threads[i]);
-        }
+    if (a) {
+        threadJoin(a, U64_MAX);
+        threadFree(a);
     }
-    say("[L] free linear space now %lu KB", linearSpaceFree() / 1024);
+    if (b) {
+        threadJoin(b, U64_MAX);
+        threadFree(b);
+    }
+    say("[L] counter=%lu lost updates=%lu", race_counter, 2 * RACE_ITERS - race_counter);
+}
+
+static volatile u32 low_prio_runs;
+static void low_prio_thread(void* arg) {
+    for (int i = 0; i < 100; i++) {
+        low_prio_runs++;
+        svcSleepThread(1000000);
+    }
+}
+
+static void test_starvation(void) {
+    // A low-priority thread on core 0 while the main thread computes for 2 s without sleeping:
+    // on hardware it never runs during that time.
+    say("[DOWN] main thread busy for 2 s, low-priority thread on core 0");
+    low_prio_runs = 0;
+    Thread t = threadCreate(low_prio_thread, NULL, 0x1000, 0x3F, 0, false);
+    svcSleepThread(1000000); // let it start once
+    u64 end = svcGetSystemTick() + 2ULL * SYSCLOCK_ARM11;
+    while (svcGetSystemTick() < end) {
+    }
+    say("[DOWN] low-priority thread ran %lu times during the busy loop", low_prio_runs);
+    if (t) {
+        threadJoin(t, U64_MAX);
+        threadFree(t);
+    }
 }
 
 static void test_near_plane(void) {
@@ -277,6 +304,8 @@ int main(int argc, char** argv) {
             test_race();
         if (kDown & KEY_R)
             test_near_plane();
+        if (kDown & KEY_DOWN)
+            test_starvation();
         if (!kDown)
             draw_vertices(small_tri, 3, true, false);
     }
