@@ -395,6 +395,35 @@ void CollectDrawRanges(const RegsInternal& regs, Memory::MemorySystem& memory, b
     }
 }
 
+bool DrawBuffersReachable(const RegsInternal& regs, bool is_indexed, const DrawLocation& where) {
+    const auto& pipeline = regs.pipeline;
+    const auto& attribs = pipeline.vertex_attributes;
+    const PAddr base = attribs.GetPhysicalBaseAddress();
+    const auto unreachable = [&](PAddr addr, const char* what, u32 offset) {
+        ReportF(Category::PicaState, Site(fmt::format("unreachable-{}", what), where),
+                "{} at 0x{:08X} (base 0x{:08X} + 28-bit offset 0x{:07X}) is outside VRAM/FCRAM: "
+                "the draw is skipped (on hardware the GPU hangs or reads garbage; a buffer more "
+                "than 256 MB above the base wraps around) | {}",
+                what, addr, base, offset, Where(where));
+        return false;
+    };
+    if (is_indexed && !IsGpuReachable(base + pipeline.index_array.offset, 1)) {
+        return unreachable(base + pipeline.index_array.offset, "index buffer",
+                           pipeline.index_array.offset);
+    }
+    for (std::size_t i = 0; i < 12; ++i) {
+        const auto& loader = attribs.attribute_loaders[i];
+        if (loader.component_count == 0 || loader.byte_count == 0) {
+            continue;
+        }
+        if (!IsGpuReachable(base + loader.data_offset, loader.byte_count)) {
+            return unreachable(base + loader.data_offset, "vertex attribute buffer",
+                               loader.data_offset);
+        }
+    }
+    return true;
+}
+
 void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
                    const OutputVertex& v2, const DrawLocation& where) {
     const std::array<const OutputVertex*, 3> vs = {&v0, &v1, &v2};

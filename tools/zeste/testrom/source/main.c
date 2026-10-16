@@ -36,6 +36,12 @@ typedef struct {
     float r, g, b, a;
 } vertex;
 
+// Explicit heap sizes, like OpenMW: libctru's default (everything but the linear heap) exceeds
+// the 128 MB heap area in the 178 MB mode and the kernel refuses it. Ignored by the .3dsx
+// launcher path (the 3dsx runs in the launcher's memory).
+u32 __ctru_heap_size = 96 * 1024 * 1024;
+u32 __ctru_linear_heap_size = 32 * 1024 * 1024;
+
 static DVLB_s* vshader_dvlb;
 static shaderProgram_s program;
 static int uLoc_projection;
