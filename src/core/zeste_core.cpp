@@ -12,6 +12,7 @@
 #include "core/gdbstub/gdbstub.h"
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/thread.h"
+#include "core/zeste_automation.h"
 #include "core/zeste_core.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
@@ -95,6 +96,7 @@ void OnSystemShutdown(Core::System& system) {
         return;
     }
     g_installed = false;
+    Automation::Reset();
     SetContextProvider({});
     SetBreakHandler({});
     if (!Settings::values.zeste_write_report.GetValue()) {

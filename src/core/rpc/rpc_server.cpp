@@ -16,6 +16,7 @@
 #include "core/memory.h"
 #include "core/rpc/packet.h"
 #include "core/rpc/rpc_server.h"
+#include "core/zeste_automation.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -310,6 +311,7 @@ bool RPCServer::ValidatePacket(const PacketHeader& packet_header) {
         case PacketType::TakeScreenshot:
         case PacketType::ReadScreenshot:
         case PacketType::GetPerfStats:
+        case PacketType::ZesteCommand:
             if (packet_header.packet_size >= (sizeof(u32) * 2)) {
                 return true;
             }
@@ -325,6 +327,9 @@ bool RPCServer::IsCoreRequest(PacketType packet_type) {
     switch (packet_type) {
     case PacketType::ReadScreenshot:
         // Only reads the server's own screenshot buffer, which is thread safe
+        return false;
+    case PacketType::ZesteCommand:
+        // Only queues the command; the automation engine runs it on the emulation thread
         return false;
     default:
         return true;
@@ -377,6 +382,21 @@ void RPCServer::DispatchRequest(std::unique_ptr<Packet> request_packet) {
     case PacketType::GetPerfStats:
         HandleGetPerfStats(*request_packet, (PerfStatsMode)arg1);
         success = true;
+        break;
+    case PacketType::ZesteCommand:
+        if (arg1 > 0 && arg1 <= request_packet->GetPacketDataSize() - (sizeof(u32) * 2)) {
+            const auto text = packet_data.subspan(sizeof(u32) * 2, arg1);
+            const std::string error = Zeste::Automation::QueueCommand(
+                std::string(reinterpret_cast<const char*>(text.data()), text.size()));
+            const u32 status = error.empty() ? 0 : 1;
+            auto reply = request_packet->GetPacketData();
+            std::memcpy(reply.data(), &status, sizeof(status));
+            const std::size_t length = std::min<std::size_t>(error.size(), reply.size() - 4);
+            std::memcpy(reply.data() + sizeof(status), error.data(), length);
+            request_packet->SetPacketDataSize(static_cast<u32>(sizeof(status) + length));
+            request_packet->SendReply();
+            return;
+        }
         break;
     default:
         break;

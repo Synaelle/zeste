@@ -21,6 +21,10 @@ enum class PacketType : u32 {
     TakeScreenshot = 5,
     ReadScreenshot = 6,
     GetPerfStats = 7,
+    /// Zeste: queue an automation command (text, see core/zeste_automation.h) for the next
+    /// VBlank. Data: u32 length, u32 reserved, then the command text. Reply: u32 status
+    /// (0 = queued, 1 = parse error) followed by the error text.
+    ZesteCommand = 0x100,
 };
 
 struct PacketHeader {

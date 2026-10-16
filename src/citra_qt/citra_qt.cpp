@@ -4,6 +4,7 @@
 
 #include <clocale>
 #include <format>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -115,6 +116,8 @@
 #include "core/movie.h"
 #include "core/savestate.h"
 #include "core/system_titles.h"
+#include "audio_core/sink_details.h"
+#include "core/zeste_automation.h"
 #include "core/zeste_core.h"
 #include "input_common/main.h"
 #include "ui_main.h"
@@ -227,6 +230,11 @@ static QString PrettyProductName() {
 }
 
 void GMainWindow::ShowCommandOutput(std::string title, std::string message) {
+    if (headless_mode) {
+        std::cout << title << ": " << message << std::endl;
+        LOG_INFO(Frontend, "{}: {}", title, message);
+        return;
+    }
 #ifdef _WIN32
     boost::replace_all(message, " ", "\u00a0"); // Non-breaking space
     boost::replace_all(message, "-", "\u2011"); // Non-breaking hyphen
@@ -420,6 +428,27 @@ GMainWindow::GMainWindow(Core::System& system_)
             QtConfig::zeste_command_line_override = true;
             continue;
         }
+        // Zeste automation
+        if (args[i] == QStringLiteral("--headless")) {
+            continue; // Detected in LaunchQtFrontend, before the window is created.
+        }
+        if (args[i] == QStringLiteral("--script") && i + 1 < args.size()) {
+            if (!Zeste::Automation::LoadScript(args[++i].toStdString())) {
+                ShowCommandOutput("Zeste", "Invalid automation script (see the log)");
+                exit(1);
+            }
+            continue;
+        }
+        if (args[i] == QStringLiteral("--quit-after") && i + 1 < args.size()) {
+            const std::string frame = args[++i].toStdString();
+            Zeste::Automation::LoadScriptText("@" + frame + " quit 0");
+            continue;
+        }
+        if (args[i] == QStringLiteral("--rpc")) {
+            Settings::values.enable_rpc_server = true;
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
         if (args[i] == QStringLiteral("--zeste-report") && i + 1 < args.size()) {
             Zeste::SetReportBasePath(args[++i].toStdString());
             Settings::values.zeste_write_report = true;
@@ -432,6 +461,40 @@ GMainWindow::GMainWindow(Core::System& system_)
             continue;
         }
     }
+
+    if (headless_mode) {
+        if (game_path.isEmpty()) {
+            std::cerr << "--headless needs an application to boot" << std::endl;
+            exit(1);
+        }
+        QtConfig::read_only = true;
+        Settings::values.zeste_no_modal_dialogs = true;
+        Settings::values.instant_debug_log = true;
+        Settings::values.output_type = AudioCore::SinkType::Null;
+        if (Settings::values.layout_option.GetValue() == Settings::LayoutOption::SeparateWindows) {
+            Settings::values.layout_option = Settings::LayoutOption::Default;
+        }
+        UISettings::values.single_window_mode = true;
+        UISettings::values.fullscreen = false;
+        UISettings::values.confirm_before_closing = false;
+        fullscreen_override = false;
+        headless_exit_on_stop = true;
+        LOG_INFO(Frontend, "Zeste headless mode: no window, null audio, no dialogs");
+    }
+    Zeste::Automation::SetQuitHandler([this](int code) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, code] {
+                headless_exit_code = code;
+                headless_exit_on_stop = true;
+                if (emu_thread) {
+                    ShutdownGame();
+                } else {
+                    QCoreApplication::exit(code);
+                }
+            },
+            Qt::QueuedConnection);
+    });
 
 #ifdef __unix__
     SetGamemodeEnabled(Settings::values.enable_gamemode.GetValue());
@@ -597,6 +660,11 @@ void GMainWindow::InitializeWidgets() {
     render_window->hide();
     secondary_window->hide();
     secondary_window->setParent(nullptr);
+    if (headless_mode) {
+        // Widgets behave as shown (GL contexts, layouts, screenshots) but never reach the screen.
+        render_window->setAttribute(Qt::WA_DontShowOnScreen);
+        secondary_window->setAttribute(Qt::WA_DontShowOnScreen);
+    }
 
 #ifndef ENABLE_FFMPEG
     ui->action_Dump_Video->setVisible(false);
@@ -1798,6 +1866,18 @@ void GMainWindow::ShutdownGame() {
     // When closing the game, destroy the GLWindow to clear the context after the game is closed
     render_window->ReleaseRenderTarget();
     secondary_window->ReleaseRenderTarget();
+
+    if (headless_exit_on_stop) {
+        LOG_INFO(Frontend, "Zeste: emulation stopped, exiting with code {}", headless_exit_code);
+        // Leave through the normal close path (input and multiplayer shutdown), then exit.
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                close();
+                QCoreApplication::exit(headless_exit_code);
+            },
+            Qt::QueuedConnection);
+    }
 }
 
 #ifdef ENABLE_DEVELOPER_OPTIONS
@@ -4080,11 +4160,9 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         result != Core::System::ResultStatus::ShutdownRequested) {
         LOG_CRITICAL(Frontend, "Core error {} (no-dialogs mode, stopping emulation): {}",
                      static_cast<u32>(result), details);
+        headless_exit_code = 2; // Only used when the process exits with emulation.
         if (emu_thread) {
             ShutdownGame();
-        }
-        if (headless_exit_on_stop) {
-            QCoreApplication::exit(2);
         }
         return;
     }
@@ -4781,6 +4859,12 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     // Register Qt image interface
     system.RegisterImageInterface(std::make_shared<QtImageInterface>());
 
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--headless") == 0) {
+            GMainWindow::headless_mode = true;
+        }
+    }
+
     GMainWindow main_window(system);
 
 #ifdef _WIN32
@@ -4798,6 +4882,9 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     system.RegisterMicPermissionCheck(&AppleAuthorization::CheckAuthorizationForMicrophone);
 #endif
 
+    if (GMainWindow::headless_mode) {
+        main_window.setAttribute(Qt::WA_DontShowOnScreen);
+    }
     main_window.show();
 
     QObject::connect(&app, &QGuiApplication::applicationStateChanged, &main_window,

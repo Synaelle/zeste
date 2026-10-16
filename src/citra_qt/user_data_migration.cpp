@@ -17,10 +17,9 @@ namespace fs = std::filesystem;
 UserDataMigrator::UserDataMigrator(QMainWindow* main_window) {
     // NOTE: Logging is not initialized yet, do not produce logs here.
 
-    // Check migration if user directory does not exist
-    if (!fs::is_directory(FileUtil::GetUserPath(FileUtil::UserPath::UserDir))) {
-        ShowMigrationPrompt(main_window);
-    }
+    // Zeste: never offer to import Citra/Lime3DS data. Zeste keeps its own user directory and
+    // the prompt would block headless runs on a fresh machine.
+    (void)main_window;
 }
 
 void UserDataMigrator::ShowMigrationPrompt(QMainWindow* main_window) {
