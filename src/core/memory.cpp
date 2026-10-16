@@ -27,6 +27,7 @@
 #include "core/hle/service/plgldr/plgldr.h"
 #include "core/memory.h"
 #include "core/zeste_cache.h"
+#include "core/zeste_exceptions.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -577,6 +578,10 @@ void MemorySystem::UnmappedAccess(const VAddr vaddr, const T value, bool read) {
         GDBStub::Break(SIGSEGV);
     }
 #endif
+    // Zeste real CPU exceptions: the access becomes a data abort (reported, rate-limited).
+    if (Zeste::Exceptions::OnUnmappedAccess(impl->system, vaddr, sizeof(T), !read)) {
+        return;
+    }
     LOG_ERROR(HW_Memory, "{}", message);
     if (Settings::values.enable_exception_handler) {
         Core::LogException(impl->system, read ? Core::ExceptionType::UnmappedRead

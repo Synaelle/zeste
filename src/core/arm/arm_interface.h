@@ -186,6 +186,13 @@ public:
     /// Prepare core for thread reschedule (if needed to correctly handle state)
     virtual void PrepareReschedule() = 0;
 
+    /// Zeste: stop right after the current guest memory access, with the PC on the faulting
+    /// instruction, so a data abort can be dispatched precisely. Returns false when the backend
+    /// cannot do it (only the dynarmic JIT can, when real CPU exceptions are enabled at boot).
+    virtual bool ZesteRequestAbortHalt() {
+        return false;
+    }
+
     /**
      * Whether the backend allows to break with single instruction accuracy
      * when Run() is used. If false is returned, the user should expect

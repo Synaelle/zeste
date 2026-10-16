@@ -9,6 +9,8 @@
 #include "common/assert.h"
 #include "common/microprofile.h"
 #include "core/arm/dynarmic/arm_dynarmic.h"
+#include "core/zeste_exceptions.h"
+#include "common/settings.h"
 #include "core/arm/dynarmic/arm_dynarmic_cp15.h"
 #include "core/arm/dynarmic/arm_exclusive_monitor.h"
 #include "core/arm/dynarmic/arm_tick_counts.h"
@@ -38,32 +40,53 @@ public:
     ~DynarmicUserCallbacks() = default;
 
     std::optional<std::uint32_t> MemoryReadCode(VAddr vaddr) override {
-        return memory.Read32OrNullopt(vaddr);
+        Zeste::Exceptions::SetCodeFetch(true);
+        const auto value = memory.Read32OrNullopt(vaddr);
+        Zeste::Exceptions::SetCodeFetch(false);
+        return value;
     }
 
+    /// Zeste: marks guest loads/stores so unmapped ones can become data aborts.
+    struct GuestAccess {
+        GuestAccess() {
+            Zeste::Exceptions::SetGuestAccess(true);
+        }
+        ~GuestAccess() {
+            Zeste::Exceptions::SetGuestAccess(false);
+        }
+    };
+
     std::uint8_t MemoryRead8(VAddr vaddr) override {
+        GuestAccess guest_access;
         return memory.Read8(vaddr);
     }
     std::uint16_t MemoryRead16(VAddr vaddr) override {
+        GuestAccess guest_access;
         return memory.Read16(vaddr);
     }
     std::uint32_t MemoryRead32(VAddr vaddr) override {
+        GuestAccess guest_access;
         return memory.Read32(vaddr);
     }
     std::uint64_t MemoryRead64(VAddr vaddr) override {
+        GuestAccess guest_access;
         return memory.Read64(vaddr);
     }
 
     void MemoryWrite8(VAddr vaddr, std::uint8_t value) override {
+        GuestAccess guest_access;
         memory.Write8(vaddr, value);
     }
     void MemoryWrite16(VAddr vaddr, std::uint16_t value) override {
+        GuestAccess guest_access;
         memory.Write16(vaddr, value);
     }
     void MemoryWrite32(VAddr vaddr, std::uint32_t value) override {
+        GuestAccess guest_access;
         memory.Write32(vaddr, value);
     }
     void MemoryWrite64(VAddr vaddr, std::uint64_t value) override {
+        GuestAccess guest_access;
         memory.Write64(vaddr, value);
     }
 
@@ -91,6 +114,10 @@ public:
     }
 
     void ExceptionRaised(VAddr pc, Dynarmic::A32::Exception exception) override {
+        if (exception == Dynarmic::A32::Exception::NoExecuteFault &&
+            Zeste::Exceptions::OnPrefetchAbort(parent.system, parent, pc)) {
+            return;
+        }
         switch (exception) {
         case Dynarmic::A32::Exception::UndefinedInstruction:
         case Dynarmic::A32::Exception::UnpredictableInstruction:
@@ -196,7 +223,10 @@ void ARM_Dynarmic::Run() {
         return;
     }
 
-    jit->Run();
+    const auto halt_reason = jit->Run();
+    if (Dynarmic::Has(halt_reason, Dynarmic::HaltReason::MemoryAbort)) [[unlikely]] {
+        Zeste::Exceptions::DispatchPending(system, *this);
+    }
 }
 
 void ARM_Dynarmic::Step() {
@@ -204,7 +234,10 @@ void ARM_Dynarmic::Step() {
         return;
     }
 
-    jit->Step();
+    const auto halt_reason = jit->Step();
+    if (Dynarmic::Has(halt_reason, Dynarmic::HaltReason::MemoryAbort)) [[unlikely]] {
+        Zeste::Exceptions::DispatchPending(system, *this);
+    }
 }
 
 void ARM_Dynarmic::SetPC(u32 pc) {
@@ -307,6 +340,14 @@ void ARM_Dynarmic::LoadContext(const ThreadContext& ctx) {
     fpexc = ctx.fpexc;
 }
 
+bool ARM_Dynarmic::ZesteRequestAbortHalt() {
+    if (!zeste_precise_aborts || !jit->IsExecuting()) {
+        return false;
+    }
+    jit->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    return true;
+}
+
 void ARM_Dynarmic::PrepareReschedule() {
     if (jit->IsExecuting()) {
         jit->HaltExecution();
@@ -365,6 +406,9 @@ std::unique_ptr<Dynarmic::A32::Jit> ARM_Dynarmic::MakeJit() {
     }
     config.coprocessors[15] = std::make_shared<DynarmicCP15>(cp15_state);
     config.define_unpredictable_behaviour = true;
+    // Zeste real CPU exceptions: stop right after a faulting access (see ZesteRequestAbortHalt).
+    zeste_precise_aborts = Settings::values.zeste_cpu_exceptions.GetValue();
+    config.check_halt_on_memory_access = zeste_precise_aborts;
 
     // Multi-process state
     config.processor_id = GetID();
