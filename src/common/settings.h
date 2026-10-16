@@ -647,6 +647,7 @@ struct Values {
     Setting<u32> zeste_preempt_seed{1, Keys::zeste_preempt_seed};
     Setting<bool> zeste_strict_priority{false, Keys::zeste_strict_priority};
     Setting<bool> zeste_sd_latency{false, Keys::zeste_sd_latency};
+    Setting<bool> zeste_async_gx{false, Keys::zeste_async_gx};
     Setting<bool> zeste_break_on_first{false, Keys::zeste_break_on_first};
     Setting<u32, true> zeste_report_log_limit{3, 1, 1000, Keys::zeste_report_log_limit};
     Setting<bool> zeste_write_report{true, Keys::zeste_write_report};

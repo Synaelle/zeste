@@ -91,6 +91,7 @@ void SetZesteStrictPreset(bool enabled) {
     values.zeste_preempt_mode = enabled ? 2u : 0u;
     values.zeste_strict_priority = enabled;
     values.zeste_sd_latency = enabled;
+    values.zeste_async_gx = enabled;
 }
 
 bool ApplyZesteOptionByName(const std::string& name) {
@@ -121,6 +122,8 @@ bool ApplyZesteOptionByName(const std::string& name) {
         values.zeste_strict_priority = true;
     } else if (name == "sd_latency") {
         values.zeste_sd_latency = true;
+    } else if (name == "async_gx") {
+        values.zeste_async_gx = true;
     } else if (name == "none") {
         SetZesteStrictPreset(false);
     } else {
@@ -135,7 +138,7 @@ bool IsAnyZesteOptionEnabled() {
            values.zeste_kernel_fixes.GetValue() || values.zeste_cache_detection.GetValue() ||
            values.zeste_hw_memory_layout.GetValue() || values.zeste_cpu_speed_model.GetValue() ||
            values.zeste_preempt_mode.GetValue() != 0 || values.zeste_strict_priority.GetValue() ||
-           values.zeste_sd_latency.GetValue();
+           values.zeste_sd_latency.GetValue() || values.zeste_async_gx.GetValue();
 }
 
 void LogSettings() {
@@ -167,6 +170,7 @@ void LogSettings() {
     log_setting("Zeste_PreemptSeed", values.zeste_preempt_seed.GetValue());
     log_setting("Zeste_StrictPriority", values.zeste_strict_priority.GetValue());
     log_setting("Zeste_SdLatency", values.zeste_sd_latency.GetValue());
+    log_setting("Zeste_AsyncGx", values.zeste_async_gx.GetValue());
     log_setting("Zeste_BreakOnFirst", values.zeste_break_on_first.GetValue());
     log_setting("Renderer_UseHwShader", values.use_hw_shader.GetValue());
     log_setting("Renderer_ShadersAccurateMul", values.shaders_accurate_mul.GetValue());

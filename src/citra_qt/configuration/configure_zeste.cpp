@@ -63,6 +63,13 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         gpu, tr("PICA timing model"),
         tr("Delay the P3D interrupt by an approximate PICA cycle cost (vertices, fragments, "
            "commands) so C3D_GetDrawingTime and frame rates are meaningful."));
+    async_gx = MakeCheck(
+        gpu, tr("Asynchronous GX transfers"),
+        tr("Display transfers, texture copies and memory fills take time as on a New 3DS: the "
+           "destination keeps its old contents until the modelled completion, then the copy "
+           "lands and the interrupt fires. GSP starts the next queued command only when the "
+           "previous one is done. CPU reads of a destination still being written are "
+           "reported."));
     root->addWidget(gpu_group);
 
     auto* mem_group = new QGroupBox(tr("CPU and memory"));
@@ -147,6 +154,7 @@ ConfigureZeste::~ConfigureZeste() = default;
 void ConfigureZeste::SetStrictPreset(bool enabled) {
     strict_pica->setChecked(enabled);
     pica_timing->setChecked(enabled);
+    async_gx->setChecked(enabled);
     cpu_exceptions->setChecked(enabled);
     kernel_fixes->setChecked(enabled);
     cache_detection->setChecked(enabled);
@@ -163,6 +171,7 @@ void ConfigureZeste::SetConfiguration() {
     const auto& v = Settings::values;
     strict_pica->setChecked(v.zeste_strict_pica.GetValue());
     pica_timing->setChecked(v.zeste_pica_timing.GetValue());
+    async_gx->setChecked(v.zeste_async_gx.GetValue());
     cpu_exceptions->setChecked(v.zeste_cpu_exceptions.GetValue());
     kernel_fixes->setChecked(v.zeste_kernel_fixes.GetValue());
     cache_detection->setChecked(v.zeste_cache_detection.GetValue());
@@ -182,6 +191,7 @@ void ConfigureZeste::ApplyConfiguration() {
     auto& v = Settings::values;
     v.zeste_strict_pica = strict_pica->isChecked();
     v.zeste_pica_timing = pica_timing->isChecked();
+    v.zeste_async_gx = async_gx->isChecked();
     v.zeste_cpu_exceptions = cpu_exceptions->isChecked();
     v.zeste_kernel_fixes = kernel_fixes->isChecked();
     v.zeste_cache_detection = cache_detection->isChecked();

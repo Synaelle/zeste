@@ -28,6 +28,7 @@
 #include "core/memory.h"
 #include "core/zeste_cache.h"
 #include "core/zeste_exceptions.h"
+#include "core/zeste_gx.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -645,6 +646,10 @@ T MemorySystem::Read(const std::shared_ptr<PageTable>& page_table, const VAddr v
         ASSERT_MSG(it != page_table->watchpoint_pages_map.end(),
                    "Missing memory for watchpoint page");
 
+        if (Zeste::Gx::AnyPending()) [[unlikely]] {
+            Zeste::Gx::OnCpuRead(vaddr, read_size);
+        }
+
         ReadType value;
         std::memcpy(&value, it->second.memory.GetPtr() + (vaddr & CITRA_PAGE_MASK), read_size);
 
@@ -670,6 +675,15 @@ T MemorySystem::Read(const std::shared_ptr<PageTable>& page_table, const VAddr v
     }
     case PageType::RasterizerCachedMemoryWatchpoint: {
         RasterizerFlushVirtualRegion(vaddr, read_size, FlushMode::Flush);
+        // Zeste: pending GX destinations are trapped with watchpoint pages (zeste_gx.h).
+        if (Zeste::Gx::AnyPending()) [[unlikely]] {
+            Zeste::Gx::OnCpuRead(vaddr, read_size);
+        }
+        if (Zeste::Cache::Enabled()) [[unlikely]] {
+            if (const auto paddr = Zeste::Cache::LinearToPhysical(vaddr)) {
+                Zeste::Cache::CheckCpuRead(*paddr, read_size);
+            }
+        }
 
         ReadType value;
         std::memcpy(&value, GetPointerForRasterizerCache(vaddr), read_size);
@@ -864,6 +878,16 @@ u8* MemorySystem::GetPointer(const VAddr vaddr) {
         return GetPointerForRasterizerCache(vaddr);
     }
 
+    // Watchpoint pages (GDB, or Zeste pending GX destinations) keep their memory in the map.
+    if (impl->current_page_table->attributes[vaddr >> CITRA_PAGE_BITS] ==
+        PageType::MemoryWatchpoint) {
+        auto& watchpoints = impl->current_page_table->watchpoint_pages_map;
+        const auto it = watchpoints.find(vaddr >> CITRA_PAGE_BITS);
+        if (it != watchpoints.end()) {
+            return it->second.memory.GetPtr() + (vaddr & CITRA_PAGE_MASK);
+        }
+    }
+
     LOG_ERROR(HW_Memory, "unknown GetPointer @ 0x{:08x} at PC 0x{:08X}", vaddr, impl->GetPC());
     return nullptr;
 }
@@ -879,6 +903,16 @@ const u8* MemorySystem::GetPointer(const VAddr vaddr) const {
         impl->current_page_table->attributes[vaddr >> CITRA_PAGE_BITS] ==
             PageType::RasterizerCachedMemoryWatchpoint) {
         return GetPointerForRasterizerCache(vaddr);
+    }
+
+    // Watchpoint pages (GDB, or Zeste pending GX destinations) keep their memory in the map.
+    if (impl->current_page_table->attributes[vaddr >> CITRA_PAGE_BITS] ==
+        PageType::MemoryWatchpoint) {
+        auto& watchpoints = impl->current_page_table->watchpoint_pages_map;
+        const auto it = watchpoints.find(vaddr >> CITRA_PAGE_BITS);
+        if (it != watchpoints.end()) {
+            return it->second.memory.GetPtr() + (vaddr & CITRA_PAGE_MASK);
+        }
     }
 
     LOG_ERROR(HW_Memory, "unknown GetPointer @ 0x{:08x}", vaddr);

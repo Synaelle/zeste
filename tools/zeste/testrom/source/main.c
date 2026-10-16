@@ -13,6 +13,7 @@
 //   R      : oversized near-plane triangle + NaN vertex (strict PICA)
 //   DOWN   : low-priority thread starved by a busy main thread (starvation report)
 //   SELECT : SD card timings and the remove_all pattern (SD latency model)
+//   UP     : texture copy read too early after a citro3d frame (asynchronous GX transfers)
 //   START  : exit
 #include <3ds.h>
 #include <citro3d.h>
@@ -352,6 +353,76 @@ static void test_sd(void) {
     say("[SELECT] deleted %d entries while iterating (remove_all pattern)", removed);
 }
 
+// UP: the pattern the hardware calibration (tools/zeste/calib v2) hit. libctru's GSP events are
+// sticky: citro3d's frame already raised PPF with its display transfer and nobody cleared it, so
+// gspWaitForPPF() (nextEvent = false) returns at once instead of waiting for the texture copy,
+// and the CPU reads the destination while the copy is still running. C3D_SyncTextureCopy outside
+// a frame ends with the same gspWaitForPPF(). Azahar finishes transfers at the register write,
+// so it always reads complete data; Zeste with async_gx reads the old contents and reports it.
+#define READBACK_MARKER 0xDEADBEEFu
+#define READBACK_SOURCE 0x5A5A5A5Au
+
+static u32 count_words(const u32* p, u32 words, u32 value) {
+    u32 n = 0;
+    for (u32 i = 0; i < words; i++)
+        n += p[i] == value;
+    return n;
+}
+
+static void prepare_readback(u32* readback, u32 size) {
+    for (u32 i = 0; i < size / 4; i++)
+        readback[i] = READBACK_MARKER;
+    GSPGPU_FlushDataCache(readback, size);
+    // A citro3d frame: its display transfer raises PPF, which stays set.
+    draw_vertices(small_tri, 3, true, false);
+    gspWaitForVBlank();
+    gspWaitForVBlank();
+    GSPGPU_InvalidateDataCache(readback, size);
+}
+
+static void report_readback(const char* how, u32* readback, u32 size) {
+    GSPGPU_InvalidateDataCache(readback, size);
+    const u32 words = size / 4;
+    const u32 early = count_words(readback, words, READBACK_MARKER);
+    svcSleepThread(10000000); // long after any transfer
+    GSPGPU_InvalidateDataCache(readback, size);
+    const u32 later = count_words(readback, words, READBACK_MARKER);
+    const u32 copied = count_words(readback, words, READBACK_SOURCE);
+    say("[UP] %s: %lu of %lu words not copied yet when the wait returned; 10 ms later %lu "
+        "(%lu copied)",
+        how, early, words, later, copied);
+}
+
+static void test_early_readback(void) {
+    say("[UP] texture copy VRAM -> linear read right after the wait (Azahar: 0 words missing)");
+    const u32 size = 256 * 1024;
+    u32* src = vramAlloc(size);
+    u32* readback = linearAlloc(size);
+    if (!src || !readback) {
+        say("[UP] allocation failed");
+        return;
+    }
+    C3D_SyncMemoryFill(src, READBACK_SOURCE, src + size / 4, GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH,
+                       NULL, 0, NULL, 0);
+    svcSleepThread(10000000); // the fill's own wait has the same problem: let it finish
+
+    // Calibration v2: GX_TextureCopy, then gspWaitForPPF.
+    prepare_readback(readback, size);
+    GX_TextureCopy(src, GX_BUFFER_DIM(size >> 4, 0), readback, GX_BUFFER_DIM(size >> 4, 0), size,
+                   GX_TRANSFER_RAW_COPY(1));
+    gspWaitForPPF();
+    report_readback("GX_TextureCopy + gspWaitForPPF", readback, size);
+
+    // Calibration v3: C3D_SyncTextureCopy outside a frame.
+    prepare_readback(readback, size);
+    C3D_SyncTextureCopy(src, GX_BUFFER_DIM(size >> 4, 0), readback, GX_BUFFER_DIM(size >> 4, 0),
+                        size, GX_TRANSFER_RAW_COPY(1));
+    report_readback("C3D_SyncTextureCopy", readback, size);
+
+    linearFree(readback);
+    vramFree(src);
+}
+
 static void test_near_plane(void) {
     say("[R] near-plane triangle with huge screen extent + NaN vertex");
     // One vertex just in front of the near plane, two far behind the camera.
@@ -375,7 +446,8 @@ int main(int argc, char** argv) {
     say("Zeste test ROM");
     info_tests();
     say("A texbind(NULL)  B stack overflow  X null write+handler");
-    say("Y unflushed VBO  L race  R near plane  START exit");
+    say("Y unflushed VBO  L race  R near plane  UP early readback");
+    say("DOWN starvation  SELECT SD  START exit");
 
     int frames = 0;
     while (aptMainLoop()) {
@@ -399,6 +471,8 @@ int main(int argc, char** argv) {
             test_starvation();
         if (kDown & KEY_SELECT)
             test_sd();
+        if (kDown & KEY_UP)
+            test_early_readback();
         if (!kDown)
             draw_vertices(small_tri, 3, true, false);
         if (++frames == 60)
