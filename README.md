@@ -2,7 +2,7 @@
 
 Zeste is a fork of [Azahar](https://github.com/azahar-emu/azahar) that I use to test 3DS
 homebrew. Azahar is very forgiving, so things that crash or break on a real New 3DS often
-work fine in it. Zeste tries to catch those cases.
+work fine in it. Zeste tries to catch those cases. Warning it's vibecoded but is VERY useful for my 3DS ports.
 
 When enabled (everything is off by default), it can:
 
