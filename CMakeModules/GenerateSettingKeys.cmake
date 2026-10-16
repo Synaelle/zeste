@@ -163,6 +163,7 @@ foreach(KEY IN ITEMS
     "zeste_preempt_seed"
     "zeste_strict_priority"
     "zeste_sd_latency"
+    "zeste_async_gx"
     "zeste_break_on_first"
     "zeste_report_log_limit"
     "zeste_write_report"

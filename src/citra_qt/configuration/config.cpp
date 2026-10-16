@@ -531,6 +531,7 @@ void QtConfig::ReadZesteValues() {
     ReadBasicSetting(Settings::values.zeste_preempt_seed);
     ReadBasicSetting(Settings::values.zeste_strict_priority);
     ReadBasicSetting(Settings::values.zeste_sd_latency);
+    ReadBasicSetting(Settings::values.zeste_async_gx);
     ReadBasicSetting(Settings::values.zeste_break_on_first);
     ReadBasicSetting(Settings::values.zeste_report_log_limit);
     ReadBasicSetting(Settings::values.zeste_write_report);
@@ -554,6 +555,7 @@ void QtConfig::SaveZesteValues() {
     WriteBasicSetting(Settings::values.zeste_preempt_seed);
     WriteBasicSetting(Settings::values.zeste_strict_priority);
     WriteBasicSetting(Settings::values.zeste_sd_latency);
+    WriteBasicSetting(Settings::values.zeste_async_gx);
     WriteBasicSetting(Settings::values.zeste_break_on_first);
     WriteBasicSetting(Settings::values.zeste_report_log_limit);
     WriteBasicSetting(Settings::values.zeste_write_report);

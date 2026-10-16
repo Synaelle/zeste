@@ -80,7 +80,8 @@ void InstallCoreHooks(Core::System& system) {
         "- Zeste options: strict_pica={} pica_timing={} "
         "cpu_exceptions={} "
         "kernel_fixes={} cache_detection={} hw_memory_layout={} cpu_speed_model={} "
-        "preempt_mode={} seed={} strict_priority={} sd_latency={} break_on_first={}\n",
+        "preempt_mode={} seed={} strict_priority={} sd_latency={} async_gx={} "
+        "break_on_first={}\n",
         Common::g_build_fullname, Common::g_scm_branch, Common::g_scm_desc, g_title,
         v.is_new_3ds.GetValue() ? "New 3DS" : "Old 3DS",
         v.use_cpu_jit.GetValue() ? "dynarmic JIT" : "interpreter",
@@ -94,7 +95,8 @@ void InstallCoreHooks(Core::System& system) {
         v.zeste_cache_detection.GetValue(), v.zeste_hw_memory_layout.GetValue(),
         v.zeste_cpu_speed_model.GetValue(), v.zeste_preempt_mode.GetValue(),
         v.zeste_preempt_seed.GetValue(), v.zeste_strict_priority.GetValue(),
-        v.zeste_sd_latency.GetValue(), v.zeste_break_on_first.GetValue()));
+        v.zeste_sd_latency.GetValue(), v.zeste_async_gx.GetValue(),
+        v.zeste_break_on_first.GetValue()));
 
     SetContextProvider([&system]() {
         Context ctx;
