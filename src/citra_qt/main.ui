@@ -11,11 +11,11 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string notr="true">Azahar</string>
+   <string notr="true">Zeste</string>
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>dist/azahar.png</normaloff>dist/azahar.png</iconset>
+    <normaloff>dist/zeste.png</normaloff>dist/zeste.png</iconset>
   </property>
   <property name="tabShape">
    <enum>QTabWidget::Rounded</enum>
@@ -353,7 +353,7 @@
   </action>
   <action name="action_About">
    <property name="text">
-    <string>About Azahar</string>
+    <string>About Zeste</string>
    </property>
    <property name="menuRole">
     <enum>QAction::AboutRole</enum>
