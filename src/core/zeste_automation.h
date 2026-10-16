@@ -29,6 +29,9 @@
 //   close                          HOME Menu "close": APT OrderToClose notification
 //   rosalina [ms=3000]             Rosalina combo (L+Down+Select) then pause the process
 //   report [path]                  write the inaccuracy report now
+//   bug <title> [| description]    file a bug in the report list (zeste_reports.md), with
+//                                  context (frame, PC, thread) and both LCDs as PNGs
+//   inaccuracy <title> [| desc]    same, filed as an emulator inaccuracy
 //   log <text>                     write a line to the log
 //   quit [exit code=0]             stop emulation and exit (headless) / stop (windowed)
 

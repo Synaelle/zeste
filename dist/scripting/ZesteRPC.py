@@ -33,6 +33,14 @@ class ZesteRPC(AzaharRPC):
         if status != 0:
             raise ValueError(reply[4:].decode("utf-8", "replace"))
 
+    def report_bug(self, title, description=""):
+        """Adds a BUG entry (with context and both screens) to Zeste's report list."""
+        self.command("bug {} | {}".format(title, description.replace("\n", " ")))
+
+    def report_inaccuracy(self, title, description=""):
+        """Adds an INACCURACY entry (with context and both screens) to Zeste's report list."""
+        self.command("inaccuracy {} | {}".format(title, description.replace("\n", " ")))
+
 
 if __name__ == "__main__":
     import sys

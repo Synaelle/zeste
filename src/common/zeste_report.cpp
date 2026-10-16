@@ -135,6 +135,31 @@ void SetReportEnvironment(std::string environment) {
     s.environment = std::move(environment);
 }
 
+std::string GetReportEnvironment() {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    return s.environment;
+}
+
+std::vector<IssueSummary> GetIssues() {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    std::vector<IssueSummary> out;
+    for (std::size_t i = 0; i < NumCategories; ++i) {
+        for (const auto& [key, entry] : s.keys[i]) {
+            out.push_back({static_cast<Category>(i), entry.count, entry.first_message,
+                           entry.first_context});
+        }
+    }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const auto& a, const auto& b) { return a.count > b.count; });
+    return out;
+}
+
+std::string FormatContextText(const Context& context) {
+    return FormatContext(context);
+}
+
 void SetLogLimit(u32 per_key_limit) {
     auto& s = GetState();
     std::scoped_lock lock{s.mutex};

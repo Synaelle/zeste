@@ -40,6 +40,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     zeste_cache.cpp
     zeste_cache.h
     zeste_automation.h
+    zeste_bug_report.cpp
+    zeste_bug_report.h
     zeste_core.cpp
     zeste_exceptions.cpp
     zeste_exceptions.h
