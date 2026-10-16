@@ -13,6 +13,7 @@
 #include "core/hle/kernel/resource_limit.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/fs/fs_user.h"
+#include "common/settings.h"
 #include "core/loader/3dsx.h"
 #include "core/loader/smdh.h"
 #include "core/memory.h"
@@ -275,6 +276,15 @@ FileType AppLoader_THREEDSX::IdentifyType(FileUtil::IOFileBase* file) {
     }
 
     return FileType::Error;
+}
+
+std::pair<std::optional<Kernel::MemoryMode>, ResultStatus>
+AppLoader_THREEDSX::LoadKernelMemoryMode() {
+    if (Settings::values.zeste_hw_memory_layout.GetValue() &&
+        Settings::values.is_new_3ds.GetValue()) {
+        return std::make_pair(Kernel::MemoryMode::NewProd, ResultStatus::Success);
+    }
+    return AppLoader::LoadKernelMemoryMode();
 }
 
 ResultStatus AppLoader_THREEDSX::Load(std::shared_ptr<Kernel::Process>& process) {

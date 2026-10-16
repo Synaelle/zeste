@@ -26,6 +26,11 @@ struct MemoryRegionInfo {
 
     IntervalSet free_blocks;
 
+    /// Zeste hardware-like layout (APPLICATION region only): heap and code are allocated from the
+    /// bottom of the region and the linear heap from the top, which puts a 178 MB-mode linear
+    /// heap above physical 0x28000000 as measured on a New 3DS.
+    bool zeste_hw_layout = false;
+
     // When locked, Free calls will be ignored, while Allocate calls will hit an assert. A memory
     // region locks itself after deserialization.
     bool is_locked{};
