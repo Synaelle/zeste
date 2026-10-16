@@ -15,6 +15,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_cache.h"
 #include "core/zeste_core.h"
+#include "core/zeste_sched.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -58,6 +59,7 @@ bool ConsumeBreakRequest() {
 void InstallCoreHooks(Core::System& system) {
     Reset();
     Cache::Reset();
+    Sched::Reset();
     g_installed = true;
     SetLogLimit(Settings::values.zeste_report_log_limit.GetValue());
     SetBreakOnFirst(Settings::values.zeste_break_on_first.GetValue());

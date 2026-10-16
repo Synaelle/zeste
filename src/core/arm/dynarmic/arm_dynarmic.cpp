@@ -10,6 +10,7 @@
 #include "common/microprofile.h"
 #include "core/arm/dynarmic/arm_dynarmic.h"
 #include "core/zeste_exceptions.h"
+#include "core/zeste_sched.h"
 #include "common/settings.h"
 #include "core/arm/dynarmic/arm_dynarmic_cp15.h"
 #include "core/arm/dynarmic/arm_exclusive_monitor.h"
@@ -226,6 +227,21 @@ void ARM_Dynarmic::Run() {
     const auto halt_reason = jit->Run();
     if (Dynarmic::Has(halt_reason, Dynarmic::HaltReason::MemoryAbort)) [[unlikely]] {
         Zeste::Exceptions::DispatchPending(system, *this);
+        return;
+    }
+    // Zeste race exposure: when the slice ran out (no reschedule was requested), move the
+    // preemption point a few instructions into the next JIT block.
+    if (halt_reason == Dynarmic::HaltReason{}) [[unlikely]] {
+        for (u32 steps = Zeste::Sched::ExtraSteps(); steps != 0 && !break_flag; --steps) {
+            const auto step_reason = jit->Step();
+            if (Dynarmic::Has(step_reason, Dynarmic::HaltReason::MemoryAbort)) {
+                Zeste::Exceptions::DispatchPending(system, *this);
+                break;
+            }
+            if (step_reason != Dynarmic::HaltReason::Step) {
+                break; // An SVC or event asked for a reschedule.
+            }
+        }
     }
 }
 

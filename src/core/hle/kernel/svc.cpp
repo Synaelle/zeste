@@ -11,6 +11,7 @@
 #include "common/microprofile.h"
 #include "common/scm_rev.h"
 #include "common/settings.h"
+#include "core/zeste_sched.h"
 #include "core/arm/arm_interface.h"
 #include "core/arm/exception_handler.h"
 #include "core/core.h"
@@ -2468,6 +2469,9 @@ void SVC::CallSVC(u32 immediate) {
         }
     }
     system.perf_stats->EndSVCProcessing();
+
+    // Zeste race exposure (mode 1): end the core's slice at every SVC.
+    Zeste::Sched::OnSvc(system);
 }
 
 SVC::SVC(Core::System& system) : system(system), kernel(system.Kernel()), memory(system.Memory()) {}
