@@ -292,6 +292,13 @@ void Process::Exit() {
 VAddr Process::GetLinearHeapAreaAddress() const {
     // Starting from system version 8.0.0 a new linear heap layout is supported to allow usage of
     // the extra RAM in the n3DS.
+    // Zeste hardware-like layout: on a New 3DS the application linear heap is reached through the
+    // 0x30000000 mapping even for exheader kernel versions below 2.44 (an application built with
+    // kernel 2.33 had its linear heap above physical 0x28000000 on hardware, which the 128 MB
+    // 0x14000000 mapping cannot reach).
+    if (memory_region && memory_region->zeste_hw_layout && Settings::values.is_new_3ds) {
+        return Memory::NEW_LINEAR_HEAP_VADDR;
+    }
     return kernel_version < 0x22C ? Memory::LINEAR_HEAP_VADDR : Memory::NEW_LINEAR_HEAP_VADDR;
 }
 
@@ -382,9 +389,25 @@ Result Process::LinearAllocate(VAddr* out_addr, VAddr target, u32 size, VMAPermi
     LOG_DEBUG(Kernel, "Allocate linear heap target={:08X}, size={:08X}", target, size);
     u32 physical_offset;
     if (target == 0) {
-        // Zeste hardware-like layout: the linear heap comes from the top of the region.
-        auto offset = memory_region->zeste_hw_layout ? memory_region->RLinearAllocate(size)
-                                                     : memory_region->LinearAllocate(size);
+        // Zeste hardware-like layout: the linear heap comes from the top of the region, as long
+        // as that part of FCRAM is visible through this process's linear mapping (the old
+        // 0x14000000 mapping only covers the first 128 MB).
+        std::optional<u32> offset;
+        if (memory_region->zeste_hw_layout) {
+            const u32 area_size = GetLinearHeapAreaAddress() == Memory::LINEAR_HEAP_VADDR
+                                      ? Memory::LINEAR_HEAP_SIZE
+                                      : Memory::NEW_LINEAR_HEAP_SIZE;
+            offset = memory_region->RLinearAllocate(size);
+            if (offset && *offset + size > area_size) {
+                memory_region->Free(*offset, size);
+                offset.reset();
+            }
+            LOG_INFO(Kernel, "Zeste layout: linear heap of 0x{:X} bytes at FCRAM+0x{:08X} (area {:08X})",
+                     size, offset.value_or(0xFFFFFFFF), GetLinearHeapAreaAddress());
+        }
+        if (!offset) {
+            offset = memory_region->LinearAllocate(size);
+        }
         if (!offset) {
             LOG_ERROR(Kernel, "Not enough space");
             return ResultOutOfHeapMemory;

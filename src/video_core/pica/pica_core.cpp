@@ -1097,6 +1097,12 @@ void PicaCore::DrawArrays(bool is_indexed) {
         Zeste::CheckDrawState(regs.internal, memory, is_indexed,
                               {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index});
     }
+    if ((zeste.strict || Settings::values.zeste_hw_memory_layout.GetValue()) &&
+        !Zeste::DrawBuffersReachable(regs.internal, is_indexed,
+                                     {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index}))
+        [[unlikely]] {
+        return;
+    }
     if (zeste.dump_recording) [[unlikely]] {
         ZesteRecordDraw(is_indexed);
     }

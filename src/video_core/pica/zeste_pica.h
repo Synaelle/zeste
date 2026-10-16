@@ -44,6 +44,11 @@ struct DrawLocation {
 void CheckDrawState(const RegsInternal& regs, Memory::MemorySystem& memory, bool is_indexed,
                     const DrawLocation& where);
 
+/// Returns false (and reports) when a vertex attribute or index buffer starts outside the memory
+/// the GPU can reach. The draw must then be skipped: on hardware the GPU hangs or reads garbage,
+/// and the host renderers would read through a null pointer.
+bool DrawBuffersReachable(const RegsInternal& regs, bool is_indexed, const DrawLocation& where);
+
 /// Checks one post-vertex-shader triangle (NaN/Inf, fixed-point range, near-plane extents,
 /// framebuffer bounds).
 void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
