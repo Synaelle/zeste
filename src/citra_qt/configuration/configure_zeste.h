@@ -29,8 +29,6 @@ private:
     bool is_powered_on;
 
     QCheckBox* strict_pica;
-    QCheckBox* fixed_point_raster;
-    QCheckBox* draw_wrapped;
     QCheckBox* cache_detection;
     QCheckBox* hw_memory_layout;
     QCheckBox* cpu_exceptions;

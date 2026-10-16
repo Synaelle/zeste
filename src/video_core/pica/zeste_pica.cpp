@@ -97,7 +97,7 @@ struct ClipVertex {
 
 constexpr float NearEpsilon = 0.00001f;
 
-/// Clips the triangle against the w = epsilon plane only, as the PICA200 does.
+/// Clips the triangle against the w = epsilon plane (for the cost estimate).
 boost::container::static_vector<ClipVertex, 4> ClipNear(const std::array<ClipVertex, 3>& in) {
     boost::container::static_vector<ClipVertex, 4> out;
     for (std::size_t i = 0; i < 3; ++i) {
@@ -117,50 +117,6 @@ boost::container::static_vector<ClipVertex, 4> ClipNear(const std::array<ClipVer
     return out;
 }
 
-struct ScreenBounds {
-    float min_x, min_y, max_x, max_y;
-    bool near_clipped;
-    bool empty;
-};
-
-ScreenBounds ProjectTriangle(const RegsInternal& regs, const OutputVertex& v0,
-                             const OutputVertex& v1, const OutputVertex& v2) {
-    const std::array<ClipVertex, 3> in = {{
-        {v0.pos.x.ToFloat32(), v0.pos.y.ToFloat32(), v0.pos.z.ToFloat32(), v0.pos.w.ToFloat32()},
-        {v1.pos.x.ToFloat32(), v1.pos.y.ToFloat32(), v1.pos.z.ToFloat32(), v1.pos.w.ToFloat32()},
-        {v2.pos.x.ToFloat32(), v2.pos.y.ToFloat32(), v2.pos.z.ToFloat32(), v2.pos.w.ToFloat32()},
-    }};
-    ScreenBounds bounds{1e30f, 1e30f, -1e30f, -1e30f, false, true};
-    bounds.near_clipped = std::any_of(in.begin(), in.end(),
-                                      [](const ClipVertex& v) { return v.w < NearEpsilon; });
-    const auto clipped = ClipNear(in);
-    if (clipped.size() < 3) {
-        return bounds;
-    }
-    const auto& r = regs.rasterizer;
-    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
-    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
-    const float off_x = static_cast<float>(r.viewport_corner.x);
-    const float off_y = static_cast<float>(r.viewport_corner.y);
-    for (const auto& v : clipped) {
-        const float sx = (v.x / v.w + 1.0f) * half_x + off_x;
-        const float sy = (v.y / v.w + 1.0f) * half_y + off_y;
-        bounds.min_x = std::min(bounds.min_x, sx);
-        bounds.min_y = std::min(bounds.min_y, sy);
-        bounds.max_x = std::max(bounds.max_x, sx);
-        bounds.max_y = std::max(bounds.max_y, sy);
-    }
-    bounds.empty = false;
-    return bounds;
-}
-
-bool OutsideGuardBand(const ScreenBounds& b) {
-    return !(b.min_x >= -GuardBand && b.max_x < GuardBand && b.min_y >= -GuardBand &&
-             b.max_y < GuardBand) ||
-           !std::isfinite(b.min_x) || !std::isfinite(b.max_x) || !std::isfinite(b.min_y) ||
-           !std::isfinite(b.max_y);
-}
-
 /// Byte offset of pixel (x, y) in a PICA framebuffer (8x8 tiles, Morton order inside a tile;
 /// the tile's base is enough for a range estimate).
 u64 TiledRowOffset(u32 y, u32 width, u32 bytes_per_pixel) {
@@ -168,56 +124,6 @@ u64 TiledRowOffset(u32 y, u32 width, u32 bytes_per_pixel) {
 }
 
 } // Anonymous namespace
-
-float WrapCoordinate(float pixels) {
-    // Signed 13.4 fixed point: 17 bits, range [-4096, 4096) pixels.
-    const double fixed = std::floor(static_cast<double>(pixels) * 16.0);
-    constexpr double Span = 2.0 * GuardBand * 16.0;
-    double wrapped = std::fmod(fixed + Span / 2.0, Span);
-    if (wrapped < 0) {
-        wrapped += Span;
-    }
-    return static_cast<float>((wrapped - Span / 2.0) / 16.0);
-}
-
-s64 PixelByteOffset(s32 x, s32 y, u32 width, u32 height_field, u32 bytes_per_pixel) {
-    // Same addressing as the PICA (and Azahar's software framebuffer): rows are stored bottom-up
-    // (fb_y = height_field - y), in 8x8 Morton tiles, tile rows of `width` pixels.
-    const s64 fb_y = static_cast<s64>(height_field) - y;
-    const s64 coarse_y = fb_y >= 0 ? (fb_y & ~7LL) : -(((-fb_y) + 7) & ~7LL);
-    const s64 coarse_x = x >= 0 ? (x & ~7LL) : -(((-static_cast<s64>(x)) + 7) & ~7LL);
-    const u32 fine = VideoCore::MortonInterleave(static_cast<u32>(x - coarse_x),
-                                                 static_cast<u32>(fb_y - coarse_y));
-    return (static_cast<s64>(fine) + coarse_x * 8) * bytes_per_pixel +
-           coarse_y * static_cast<s64>(width) * bytes_per_pixel;
-}
-
-bool ProjectNearClipped(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
-                        const OutputVertex& v2, ScreenPolygon& out) {
-    const std::array<ClipVertex, 3> in = {{
-        {v0.pos.x.ToFloat32(), v0.pos.y.ToFloat32(), v0.pos.z.ToFloat32(), v0.pos.w.ToFloat32()},
-        {v1.pos.x.ToFloat32(), v1.pos.y.ToFloat32(), v1.pos.z.ToFloat32(), v1.pos.w.ToFloat32()},
-        {v2.pos.x.ToFloat32(), v2.pos.y.ToFloat32(), v2.pos.z.ToFloat32(), v2.pos.w.ToFloat32()},
-    }};
-    const auto clipped = ClipNear(in);
-    if (clipped.size() < 3) {
-        return false;
-    }
-    const auto& r = regs.rasterizer;
-    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
-    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
-    const float off_x = static_cast<float>(r.viewport_corner.x);
-    const float off_y = static_cast<float>(r.viewport_corner.y);
-    out.count = static_cast<u32>(clipped.size());
-    for (u32 i = 0; i < out.count; ++i) {
-        const auto& v = clipped[i];
-        const float sx = (v.x / v.w + 1.0f) * half_x + off_x;
-        const float sy = (v.y / v.w + 1.0f) * half_y + off_y;
-        out.points[i] = {sx, sy};
-        out.wrapped[i] = {WrapCoordinate(sx), WrapCoordinate(sy)};
-    }
-    return true;
-}
 
 bool IsGpuReachable(PAddr addr, u32 size) {
     const u64 end = static_cast<u64>(addr) + size;
@@ -496,65 +402,29 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
         }
     }
 
-    const ScreenBounds b = ProjectTriangle(regs, v0, v1, v2);
-    if (b.empty) {
-        return;
-    }
-    const bool outside = OutsideGuardBand(b);
-    if (outside) {
-        ReportF(Category::PicaVertex, Site("range", where),
-                "{}primitive reaches screen ({:.0f},{:.0f})-({:.0f},{:.0f}), outside the "
-                "fixed-point rasterizer range (+-{:.0f} px): the PICA200 drops it or draws it "
-                "wrong | {}",
-                b.near_clipped ? "near-plane clipped " : "", b.min_x, b.min_y, b.max_x, b.max_y,
-                GuardBand, Where(where));
-
-        const auto& fb = regs.framebuffer.framebuffer;
-        const u32 fb_w = fb.GetWidth();
-        const u32 fb_h = fb.GetHeight();
-        ScreenPolygon poly;
-        if (fb_w != 0 && ProjectNearClipped(regs, v0, v1, v2, poly)) {
-            // Wrap model: each vertex wraps independently (signed 13.4), the wrapped primitive is
-            // rasterized as such and the scissor test does not stop it (see the guide).
-            float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
-            for (u32 i = 0; i < poly.count; ++i) {
-                x0 = std::min(x0, poly.wrapped[i][0]);
-                y0 = std::min(y0, poly.wrapped[i][1]);
-                x1 = std::max(x1, poly.wrapped[i][0]);
-                y1 = std::max(y1, poly.wrapped[i][1]);
-            }
-            const s32 ix0 = static_cast<s32>(std::floor(x0)), iy0 = static_cast<s32>(std::floor(y0));
-            const s32 ix1 = static_cast<s32>(std::ceil(x1)), iy1 = static_cast<s32>(std::ceil(y1));
-            const u32 bpp = ColorBytesPerPixel(fb.color_format.Value());
-            const PAddr color = fb.GetColorBufferPhysicalAddress();
-            const s64 fb_size = static_cast<s64>(fb_w) * fb_h * bpp;
-            s64 lo = std::numeric_limits<s64>::max(), hi = std::numeric_limits<s64>::min();
-            for (const s32 x : {ix0, ix1, ix0 + 7, ix1 - 7}) {
-                for (const s32 y : {iy0, iy1, iy0 + 7, iy1 - 7}) {
-                    const s64 off = PixelByteOffset(x, y, fb_w, fb.height, bpp);
-                    lo = std::min(lo, off);
-                    hi = std::max(hi, off + bpp);
-                }
-            }
-            const bool inside = lo >= 0 && hi <= fb_size;
-            ReportF(Category::PicaBounds, Site("oob", where),
-                    "out-of-range primitive wraps to screen ({},{})-({},{}) ({}x{} px) on the {}x{} "
-                    "framebuffer at 0x{:08X}; modelled writes 0x{:08X}-0x{:08X}{} (signed 13.4 "
-                    "wrap, scissor not applied) | {}",
-                    ix0, iy0, ix1, iy1, ix1 - ix0, iy1 - iy0, fb_w, fb_h, color,
-                    static_cast<u32>(color + lo), static_cast<u32>(color + hi),
-                    inside ? " (inside the buffer)"
-                           : fmt::format(" ({} KiB before, {} KiB after the buffer)",
-                                         lo < 0 ? (-lo + 1023) / 1024 : 0,
-                                         hi > fb_size ? (hi - fb_size + 1023) / 1024 : 0),
-                    Where(where));
+    // Hardware calibration (tools/zeste/calib, ZESTE_GUIDE.md section 13): primitives far outside
+    // the screen draw exactly like float clipping, up to the magnitudes measured. Only vertices
+    // beyond those are reported, as unverified. Vertices outside the depth range are clipped
+    // away before rasterization and do not count.
+    const auto& r = regs.rasterizer;
+    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
+    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
+    float worst = 0.0f;
+    for (const auto* v : vs) {
+        const float w = v->pos.w.ToFloat32();
+        const float z = v->pos.z.ToFloat32();
+        if (!(w > 0.0f) || z > 0.0f || z < -w) {
+            continue;
         }
-    } else if (b.near_clipped &&
-               (b.max_x - b.min_x > HugeExtent || b.max_y - b.min_y > HugeExtent)) {
-        ReportF(Category::PicaVertex, Site("near-huge", where),
-                "near-plane clipped primitive spans {:.0f}x{:.0f} px on screen (precision loss "
-                "in the fixed-point rasterizer) | {}",
-                b.max_x - b.min_x, b.max_y - b.min_y, Where(where));
+        const float sx = std::abs((v->pos.x.ToFloat32() / w + 1.0f) * half_x);
+        const float sy = std::abs((v->pos.y.ToFloat32() / w + 1.0f) * half_y);
+        worst = std::max({worst, sx, sy});
+    }
+    if (worst > MeasuredRange) {
+        ReportF(Category::PicaVertex, Site("range", where),
+                "vertex reaches {:.3g} px on screen, beyond what was measured on hardware "
+                "(+-{:.0g} px drew correctly): not verified | {}",
+                worst, MeasuredRange, Where(where));
     }
 }
 
@@ -612,15 +482,6 @@ double TriangleCostCycles(const RegsInternal& regs, const OutputVertex& v0, cons
         area = fb_area;
     }
     return CyclesPerTriangle + std::min(area, fb_area) * CyclesPerFragment;
-}
-
-bool FixedPointRasterAccepts(const RegsInternal& regs, const OutputVertex& v0,
-                             const OutputVertex& v1, const OutputVertex& v2) {
-    if (!AllFinite(v0.pos, 4) || !AllFinite(v1.pos, 4) || !AllFinite(v2.pos, 4)) {
-        return false;
-    }
-    const ScreenBounds b = ProjectTriangle(regs, v0, v1, v2);
-    return b.empty || !OutsideGuardBand(b);
 }
 
 } // namespace Pica::Zeste
