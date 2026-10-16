@@ -44,6 +44,7 @@ constexpr char help_string[] =
     "    --script [file]         Frame-timed automation script (input, LCD dumps, memory dumps...)\n"
     "    --quit-after [frames]   Stop and exit after this many emulated frames\n"
     "    --renderer [api]        software, opengl or vulkan for this run\n"
+    "    --boot-cia [path]       Install a CIA and boot the installed title\n"
     "    --rpc                   Enable the RPC server (UDP 45987, see dist/scripting/ZesteRPC.py)\n"
     "    --zeste-report [path]   Inaccuracy report path, without extension\n"
     "                              (default: <log dir>/zeste_report.md/.json)";
