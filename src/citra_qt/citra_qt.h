@@ -106,6 +106,8 @@ public:
     /// to the null sink, dialogs are suppressed, the config file is not written and the process
     /// exits when emulation stops. Set before the window is constructed.
     static inline bool headless_mode = false;
+    /// Zeste: set when a headless run could not boot its application (exit code 1).
+    static inline bool headless_boot_failed = false;
 
     void filterBarSetChecked(bool state);
 #ifdef _WIN32
