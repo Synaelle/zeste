@@ -187,6 +187,8 @@ private:
     /// Zeste: installs a CIA (like -i) and returns the path of the installed title's main
     /// content, or an empty string (logged) on failure.
     QString ZesteInstallCiaForBoot(const QString& cia_path);
+    /// Zeste: "Report a bug or inaccuracy..." dialog (appends to the report list).
+    void ZesteFileReport();
     void ShutdownGame();
 
 #ifdef ENABLE_DISCORD_RPC

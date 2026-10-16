@@ -13,6 +13,7 @@
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/thread.h"
 #include "core/zeste_automation.h"
+#include "core/zeste_bug_report.h"
 #include "core/zeste_cache.h"
 #include "core/zeste_core.h"
 #include "core/zeste_sched.h"
@@ -137,6 +138,7 @@ void OnSystemShutdown(Core::System& system) {
     Automation::Reset();
     SetContextProvider({});
     SetBreakHandler({});
+    BugReports::AppendSessionDetections(g_title);
     if (!Settings::values.zeste_write_report.GetValue()) {
         return;
     }

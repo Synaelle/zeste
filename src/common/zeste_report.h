@@ -16,6 +16,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <fmt/format.h>
 #include "common/common_types.h"
 
@@ -85,6 +86,21 @@ bool WriteReport(const std::string& base_path, std::string_view title);
 
 /// Environment block (build, title, settings) included in every report.
 void SetReportEnvironment(std::string environment);
+std::string GetReportEnvironment();
+
+/// One distinct detected issue (first occurrence and total count).
+struct IssueSummary {
+    Category category;
+    u64 count;
+    std::string message;
+    Context first_context;
+};
+
+/// Every distinct issue recorded since the last Reset(), most frequent first.
+std::vector<IssueSummary> GetIssues();
+
+/// "pc=... thread=... frame=..." text for a context.
+std::string FormatContextText(const Context& context);
 
 /// Formats the report as Markdown (used by WriteReport and the Qt "Inaccuracy report" dialog).
 std::string FormatMarkdown(std::string_view title);
