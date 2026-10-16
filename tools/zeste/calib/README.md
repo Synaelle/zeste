@@ -4,8 +4,8 @@ Runs on a real 3DS (New 3DS preferred, Luma CFW). It draws primitives far outsid
 cut by the near plane or touching the camera plane, and records what the hardware did. Zeste's
 `strict_pica` check is fitted to these results.
 
-This is version 2. It writes to `sdmc:/zeste-calib2/`. Version 1's results stay in
-`sdmc:/zeste-calib/`.
+This is version 3. It writes to `sdmc:/zeste-calib3/`. Earlier versions' results stay in
+`sdmc:/zeste-calib/` (v1) and `sdmc:/zeste-calib2/` (v2).
 
 ## Install
 - `.cia`: install with FBI (runs in the 178 MB mode at 268 MHz, like the OpenMW port).
@@ -21,7 +21,7 @@ This is version 2. It writes to `sdmc:/zeste-calib2/`. Version 1's results stay 
    The top screen shows the drawing. Some cases are expected to look wrong; that is the point.
 3. Press **START** during a run to stop after the current case. **A** continues later.
 4. When it says "All cases done", turn the console off and send the whole
-   `sdmc:/zeste-calib2/` folder (zip it).
+   `sdmc:/zeste-calib3/` folder.
 
 ## If something goes wrong
 - **"Case N broke the GPU"**: the GPU stopped finishing work. Turn the console off and on,
@@ -31,7 +31,7 @@ This is version 2. It writes to `sdmc:/zeste-calib2/`. Version 1's results stay 
 
 Both are useful results, not failures of the test.
 
-## Output (`sdmc:/zeste-calib2/`)
+## Output (`sdmc:/zeste-calib3/`)
 - `log.txt`: everything, readable. The first lines give the physical VRAM layout.
 - `results.csv`: one line per case: result (`OK`, `OOB_WRITES`, `DEPTH_UNCHANGED`,
   `CONTROL_FAILED`, `READBACK_BROKEN`, `GPU_HANG`, `FROZE`), the longest GPU wait, the canary
@@ -58,7 +58,9 @@ Both are useful results, not failures of the test.
 
 After each case the ROM checks that the GPU still completes frames (2 s timeout), and that
 known patterns in VRAM are untouched: before the colour buffer, in the depth buffer, after the
-buffers, and in a second render target. The memory is read back through a GPU copy.
+buffers, and in a second render target. The memory is read back through a GPU copy that the
+ROM waits for properly (v2 sometimes read it too early: changes at the very start of a region,
+even right after the fill, were that, not GPU writes).
 
 ## Build
 `make`, then `sh make_cia.sh` (needs devkitPro with citro3d, plus makerom and bannertool).
