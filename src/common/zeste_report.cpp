@@ -40,6 +40,7 @@ struct State {
     std::array<u64, NumCategories> logged{};
     std::array<u64, NumCategories> dropped_keys{};
     std::array<std::atomic<u64>, NumCategories> totals{};
+    std::string environment;
 };
 
 State& GetState() {
@@ -126,6 +127,12 @@ void SetBreakHandler(std::function<void(Category, const std::string&)> handler) 
     auto& s = GetState();
     std::scoped_lock lock{s.mutex};
     s.break_handler = std::move(handler);
+}
+
+void SetReportEnvironment(std::string environment) {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    s.environment = std::move(environment);
 }
 
 void SetLogLimit(u32 per_key_limit) {
@@ -232,7 +239,10 @@ std::string FormatMarkdown(std::string_view title) {
     std::string out = fmt::format("# Zeste inaccuracy report: {}\n\n", title);
     out += "Each line is something that the emulator handled but a real New 3DS would not (or "
            "would handle differently). Counts are totals; the context is the first occurrence.\n\n";
-    out += "| Category | Total |\n|---|---|\n";
+    if (!s.environment.empty()) {
+        out += "## Environment\n\n" + s.environment + "\n";
+    }
+    out += "## Summary\n\n| Category | Total |\n|---|---|\n";
     u64 grand_total = 0;
     for (std::size_t i = 0; i < NumCategories; ++i) {
         const u64 total = s.totals[i].load(std::memory_order_relaxed);

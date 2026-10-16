@@ -87,6 +87,7 @@
 #include "citra_qt/util/clickable_label.h"
 #include "citra_qt/util/graphics_device_info.h"
 #include "citra_qt/util/util.h"
+#include "citra_qt/zeste_report_dialog.h"
 #include "common/arch.h"
 #include "common/common_paths.h"
 #include "common/dynamic_library.h"
@@ -1267,6 +1268,28 @@ void GMainWindow::ConnectWidgetEvents() {
 }
 
 void GMainWindow::ConnectMenuEvents() {
+    // Zeste menu (inserted before Help).
+    auto* zeste_menu = new QMenu(tr("&Zeste"), this);
+    menuBar()->insertMenu(ui->menu_Help->menuAction(), zeste_menu);
+    connect(zeste_menu->addAction(tr("&Inaccuracy report...")), &QAction::triggered, this,
+            [this] { (new ZesteReportDialog(this))->show(); });
+    connect(zeste_menu->addAction(tr("&Hardware accuracy settings...")), &QAction::triggered,
+            this, &GMainWindow::OnConfigure);
+    zeste_menu->addSeparator();
+    connect(zeste_menu->addAction(tr("Enable &strict hardware mode")), &QAction::triggered, this,
+            [this] {
+                Settings::SetZesteStrictPreset(true);
+                config->Save();
+                statusBar()->showMessage(
+                    tr("Zeste strict hardware mode enabled (some options apply at the next boot)"),
+                    5000);
+            });
+    connect(zeste_menu->addAction(tr("&Azahar behaviour (disable all)")), &QAction::triggered,
+            this, [this] {
+                Settings::SetZesteStrictPreset(false);
+                config->Save();
+                statusBar()->showMessage(tr("Zeste options disabled"), 5000);
+            });
     const auto connect_menu = [&](QAction* action, const auto& event_fn,
                                   QAction::MenuRole role = QAction::NoRole) {
         action->setMenuRole(role);

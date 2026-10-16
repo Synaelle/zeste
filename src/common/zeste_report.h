@@ -83,6 +83,9 @@ u64 Count(Category category);
 /// without extension. Returns false when nothing was written.
 bool WriteReport(const std::string& base_path, std::string_view title);
 
+/// Environment block (build, title, settings) included in every report.
+void SetReportEnvironment(std::string environment);
+
 /// Formats the report as Markdown (used by WriteReport and the Qt "Inaccuracy report" dialog).
 std::string FormatMarkdown(std::string_view title);
 

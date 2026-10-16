@@ -68,6 +68,30 @@ void InstallCoreHooks(Core::System& system) {
 
     g_title = fmt::format("{} (title {:016X})", system.GetFilePath(), system.GetTitleID());
 
+    const auto& v = Settings::values;
+    SetReportEnvironment(fmt::format(
+        "- Build: Zeste {} ({}, {})\n"
+        "- Application: {}\n"
+        "- Console: {}, CPU backend: {}, clock {}%\n"
+        "- Renderer: {}, hardware vertex shaders: {}\n"
+        "- Zeste options: strict_pica={} fixed_point_raster={} pica_timing={} cpu_exceptions={} "
+        "kernel_fixes={} cache_detection={} hw_memory_layout={} cpu_speed_model={} "
+        "preempt_mode={} seed={} strict_priority={} sd_latency={} break_on_first={}\n",
+        Common::g_build_fullname, Common::g_scm_branch, Common::g_scm_desc, g_title,
+        v.is_new_3ds.GetValue() ? "New 3DS" : "Old 3DS",
+        v.use_cpu_jit.GetValue() ? "dynarmic JIT" : "interpreter",
+        v.cpu_clock_percentage.GetValue(),
+        v.graphics_api.GetValue() == Settings::GraphicsAPI::Software ? "software"
+        : v.graphics_api.GetValue() == Settings::GraphicsAPI::OpenGL ? "OpenGL"
+                                                                       : "Vulkan",
+        v.use_hw_shader.GetValue(), v.zeste_strict_pica.GetValue(),
+        v.zeste_fixed_point_raster.GetValue(), v.zeste_pica_timing.GetValue(),
+        v.zeste_cpu_exceptions.GetValue(), v.zeste_kernel_fixes.GetValue(),
+        v.zeste_cache_detection.GetValue(), v.zeste_hw_memory_layout.GetValue(),
+        v.zeste_cpu_speed_model.GetValue(), v.zeste_preempt_mode.GetValue(),
+        v.zeste_preempt_seed.GetValue(), v.zeste_strict_priority.GetValue(),
+        v.zeste_sd_latency.GetValue(), v.zeste_break_on_first.GetValue()));
+
     SetContextProvider([&system]() {
         Context ctx;
         if (!system.IsPoweredOn() || !system.HasRunningCore()) {

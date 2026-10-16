@@ -45,6 +45,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     configuration/configure_debug.ui
     configuration/configure_zeste.cpp
     configuration/configure_zeste.h
+    zeste_report_dialog.cpp
+    zeste_report_dialog.h
     configuration/configure_enhancements.cpp
     configuration/configure_enhancements.h
     configuration/configure_enhancements.ui
