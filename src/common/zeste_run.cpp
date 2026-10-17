@@ -105,25 +105,4 @@ void Note(const std::string& key, const std::string& value) {
     file.WriteString(key + ": " + value + "\n");
 }
 
-SharedFileLock::SharedFileLock() {
-#ifdef _WIN32
-    handle = CreateMutexW(nullptr, FALSE, L"Local\\ZesteSharedFiles");
-    if (handle) {
-        const DWORD result = WaitForSingleObject(static_cast<HANDLE>(handle), 5000);
-        owned = result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
-    }
-#endif
-}
-
-SharedFileLock::~SharedFileLock() {
-#ifdef _WIN32
-    if (handle) {
-        if (owned) {
-            ReleaseMutex(static_cast<HANDLE>(handle));
-        }
-        CloseHandle(static_cast<HANDLE>(handle));
-    }
-#endif
-}
-
 } // namespace Zeste::Run

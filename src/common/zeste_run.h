@@ -32,18 +32,4 @@ void Note(const std::string& key, const std::string& value);
 /// Process ID, for file names.
 u32 ProcessId();
 
-/// Cross-process lock for files shared by every Zeste instance (the report list). Waits up to
-/// a few seconds for another instance, then proceeds anyway (logged).
-class SharedFileLock {
-public:
-    SharedFileLock();
-    ~SharedFileLock();
-    SharedFileLock(const SharedFileLock&) = delete;
-    SharedFileLock& operator=(const SharedFileLock&) = delete;
-
-private:
-    void* handle = nullptr;
-    bool owned = false;
-};
-
 } // namespace Zeste::Run

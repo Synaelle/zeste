@@ -46,7 +46,6 @@ constexpr char help_string[] =
     "    --renderer [api]        software, opengl or vulkan for this run\n"
     "    --boot-cia [path]       Install a CIA and boot the installed title\n"
     "    --rpc                   Enable the RPC server (UDP 45987, see dist/scripting/ZesteRPC.py)\n"
-    "    --zeste-reports-file [path]  Bug/inaccuracy list (default <user dir>/zeste_reports.md)\n"
     "    --zeste-report [path]   Inaccuracy report path, without extension\n"
     "                              (default: <log dir>/zeste_report.md/.json)";
 
