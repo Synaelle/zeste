@@ -76,6 +76,45 @@ struct TriangleDump {
 TriangleDump DescribeTriangle(const RegsInternal& regs, const OutputVertex& v0,
                               const OutputVertex& v1, const OutputVertex& v2);
 
+/// Screen pixels a triangle covers after clipping (w > 0 and the depth range), face culling and
+/// the viewport rectangle: the rasterizer's work for it.
+float CoveredPixels(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
+                    const OutputVertex& v2);
+
+/// Draw-mode switch check. On hardware the command processor applies GPUREG_PRIMITIVE_CONFIG and
+/// GPUREG_GEOSTAGE_CONFIG/CONFIG2 as soon as it reaches them, while the previous draws' vertices
+/// may still be in the pipeline. An array draw right behind indexed geometry-mode draws that
+/// covered the screen hundreds of times left the vertex stream one output out of step for the
+/// rest of the run (OpenMW port, hardware tests #26-#33; fixed by one primitive mode per frame).
+/// The emulator runs every draw to completion first, so the switch is only reported.
+struct DrawMode {
+    u8 kind = 0;       ///< 0 array draw, 1 indexed draw, 2 immediate-mode vertices
+    u8 topology = 0;   ///< GPUREG_PRIMITIVE_CONFIG bits 8-9 (3 = geometry-primitive mode)
+    u32 geostage = 0;  ///< GPUREG_GEOSTAGE_CONFIG (0x229), bits 0-1 and 8
+    u32 geostage2 = 0; ///< GPUREG_GEOSTAGE_CONFIG2 (0x253), bits 0 and 8
+    bool operator==(const DrawMode&) const = default;
+};
+DrawMode CurrentDrawMode(const RegsInternal& regs, u8 kind);
+std::string DescribeDrawMode(const DrawMode& mode);
+
+/// The draws of one mode since the last switch in the current command list.
+struct ModeRun {
+    u32 draws = 0;
+    double pixels = 0;          ///< Covered pixels, all draws
+    double heaviest_pixels = 0; ///< Covered pixels of the heaviest draw
+    u32 heaviest_index = 0;     ///< Its draw number in the frame
+    u32 heaviest_tag = 0;       ///< Its draw tag
+};
+
+/// Previous draws covering at least this many screens make a switch "heavy". The hardware broke
+/// behind hundreds of screens; switches behind ordinary scene draws (around one screen) ran
+/// through whole test runs without trouble. The threshold in between is not measured.
+constexpr double HeavyModeRunScreens = 10.0;
+
+void ReportDrawModeSwitch(const RegsInternal& regs, const DrawMode& previous,
+                          const DrawMode& current, const ModeRun& run,
+                          const DrawLocation& where);
+
 /// Memory a draw reads (vertex attributes, indices, textures) and writes (color/depth buffers).
 struct DrawRange {
     PAddr addr;

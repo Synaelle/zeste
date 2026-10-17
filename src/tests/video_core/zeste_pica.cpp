@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <algorithm>
 #include <cmath>
 #include <catch2/catch_test_macros.hpp>
 #include "common/zeste_report.h"
@@ -89,6 +90,44 @@ TEST_CASE("Zeste strict PICA: values outside the 24-bit float range", "[video_co
                                MakeVertex(0.5f, -0.5f, -0.5f, 1.0f),
                                MakeVertex(0.0f, 0.5f, -0.5f, 1.0e18f), {});
     REQUIRE(::Zeste::Count(::Zeste::Category::PicaVertex) == 0);
+    ::Zeste::Reset();
+}
+
+TEST_CASE("Zeste strict PICA: covered pixels", "[video_core][zeste]") {
+    const auto regs = MakeRegs();
+    // Half of the 240x400 viewport.
+    const float half = Pica::Zeste::CoveredPixels(regs, MakeVertex(-1.0f, -1.0f, -0.5f, 1.0f),
+                                                  MakeVertex(1.0f, -1.0f, -0.5f, 1.0f),
+                                                  MakeVertex(-1.0f, 1.0f, -0.5f, 1.0f));
+    REQUIRE(std::abs(half - 48000.0f) < 1.0f);
+    // A triangle far larger than the screen covers it once.
+    const float full = Pica::Zeste::CoveredPixels(regs, MakeVertex(-100.0f, -100.0f, -0.5f, 1.0f),
+                                                  MakeVertex(300.0f, -100.0f, -0.5f, 1.0f),
+                                                  MakeVertex(-100.0f, 300.0f, -0.5f, 1.0f));
+    REQUIRE(std::abs(full - 96000.0f) < 1.0f);
+    // Entirely behind the camera.
+    REQUIRE(Pica::Zeste::CoveredPixels(regs, MakeVertex(0.0f, 0.0f, 0.5f, -1.0f),
+                                       MakeVertex(1.0f, 0.0f, 0.5f, -1.0f),
+                                       MakeVertex(0.0f, 1.0f, 0.5f, -1.0f)) == 0.0f);
+}
+
+TEST_CASE("Zeste strict PICA: draw-mode switch reports", "[video_core][zeste]") {
+    ::Zeste::Reset();
+    auto regs = MakeRegs();
+    const auto indexed = Pica::Zeste::CurrentDrawMode(regs, 1);
+    const auto arrays = Pica::Zeste::CurrentDrawMode(regs, 0);
+    REQUIRE_FALSE(indexed == arrays);
+    Pica::Zeste::ModeRun run;
+    run.draws = 1;
+    run.pixels = 96000.0 * 300; // 300 screens
+    run.heaviest_pixels = run.pixels;
+    Pica::Zeste::ReportDrawModeSwitch(regs, indexed, arrays, run, {0x20000000, 0x40, 2});
+    REQUIRE(::Zeste::Count(::Zeste::Category::PicaState) == 1);
+    const auto issues = ::Zeste::GetIssues();
+    REQUIRE(std::any_of(issues.begin(), issues.end(), [](const auto& issue) {
+        return issue.message.find("covered the screen 300.0 times") != std::string::npos &&
+               issue.message.find("still be in the pipeline") != std::string::npos;
+    }));
     ::Zeste::Reset();
 }
 

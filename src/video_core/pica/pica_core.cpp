@@ -89,6 +89,9 @@ PicaCore::PicaCore(Memory::MemorySystem& memory_, std::shared_ptr<DebugContext> 
             if (zeste.timing) [[unlikely]] {
                 zeste.gpu_cycles += Zeste::TriangleCostCycles(regs.internal, v0, v1, v2);
             }
+            if (zeste.strict) [[unlikely]] {
+                zeste.draw_pixels += Zeste::CoveredPixels(regs.internal, v0, v1, v2);
+            }
             if (zeste.dump_vertices) [[unlikely]] {
                 ZesteRecordTriangle(v0, v1, v2);
             }
@@ -295,6 +298,7 @@ void PicaCore::ProcessCmdList(PAddr list, u32 size, bool ignore_list) [[hot]] {
     const u8* head = memory.GetPhysicalPointer(list);
     cmd_list.Reset(list, head, size);
     zeste.tag = 0;
+    ++zeste.list_seq;
 
     bool stop_requested = false;
     bool skip_fast_path = false;
@@ -1059,6 +1063,9 @@ void PicaCore::DrawImmediate() {
     zeste.strict = Settings::values.zeste_strict_pica.GetValue();
     zeste.draw_cmdlist = cmd_list.addr;
     zeste.draw_offset = cmd_list.current_index * 4;
+    if (zeste.strict) [[unlikely]] {
+        ZesteBeginDraw(2);
+    }
     // Compile the vertex shader.
     shader_engine->SetupBatch(vs_setup, regs.internal.vs.main_offset);
 
@@ -1116,6 +1123,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
     if (zeste.strict) [[unlikely]] {
         Zeste::CheckDrawState(regs.internal, memory, is_indexed,
                               {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index, zeste.tag});
+        ZesteBeginDraw(is_indexed ? 1 : 0);
     }
     if ((zeste.strict || Settings::values.zeste_hw_memory_layout.GetValue()) &&
         !Zeste::DrawBuffersReachable(regs.internal, is_indexed,
@@ -1401,6 +1409,36 @@ void PicaCore::ZesteRecordTriangle(const OutputVertex& v0, const OutputVertex& v
         zeste.dump_max_x = std::max(zeste.dump_max_x, tri.max_x);
         zeste.dump_max_y = std::max(zeste.dump_max_y, tri.max_y);
     }
+}
+
+void PicaCore::ZesteBeginDraw(u8 kind) {
+    const Zeste::DrawMode mode = Zeste::CurrentDrawMode(regs.internal, kind);
+    if (!zeste.mode_valid || zeste.mode_list_seq != zeste.list_seq) {
+        // First draw of a command list: the previous list has finished on hardware too.
+        zeste.mode_run = {};
+    } else {
+        // Account for the previous draw, now complete.
+        auto& run = zeste.mode_run;
+        ++run.draws;
+        run.pixels += zeste.draw_pixels;
+        if (zeste.draw_pixels > run.heaviest_pixels) {
+            run.heaviest_pixels = zeste.draw_pixels;
+            run.heaviest_index = zeste.mode_draw_index;
+            run.heaviest_tag = zeste.mode_draw_tag;
+        }
+        if (!(mode == zeste.mode)) {
+            Zeste::ReportDrawModeSwitch(
+                regs.internal, zeste.mode, mode, run,
+                {zeste.draw_cmdlist, zeste.draw_offset, zeste.draw_index, zeste.tag});
+            zeste.mode_run = {};
+        }
+    }
+    zeste.mode = mode;
+    zeste.mode_valid = true;
+    zeste.mode_list_seq = zeste.list_seq;
+    zeste.draw_pixels = 0;
+    zeste.mode_draw_index = zeste.draw_index;
+    zeste.mode_draw_tag = zeste.tag;
 }
 
 void PicaCore::ZesteRecordDrawEnd() {
