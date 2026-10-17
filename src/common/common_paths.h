@@ -42,7 +42,7 @@
 #define LEGACY_CITRA_DATA_DIR "citra-emu"
 #define LEGACY_LIME3DS_DATA_DIR "lime3ds-emu"
 #else
-#define EMU_DATA_DIR "azahar-emu"
+#define EMU_DATA_DIR "zeste" // Zeste: separate from Azahar's data
 #define LEGACY_CITRA_DATA_DIR "citra-emu"
 #define LEGACY_LIME3DS_DATA_DIR "lime3ds-emu"
 #endif
