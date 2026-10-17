@@ -87,7 +87,6 @@
 #include "citra_qt/util/clickable_label.h"
 #include "citra_qt/util/graphics_device_info.h"
 #include "citra_qt/util/util.h"
-#include "citra_qt/zeste_report_dialog.h"
 #include "common/arch.h"
 #include "common/common_paths.h"
 #include "common/dynamic_library.h"
@@ -120,7 +119,6 @@
 #include "core/system_titles.h"
 #include "audio_core/sink_details.h"
 #include "core/zeste_automation.h"
-#include "core/zeste_bug_report.h"
 #include "core/zeste_core.h"
 #include "common/zeste_run.h"
 #include "input_common/main.h"
@@ -490,10 +488,6 @@ GMainWindow::GMainWindow(Core::System& system_)
         if (args[i] == QStringLiteral("--rpc")) {
             Settings::values.enable_rpc_server = true;
             QtConfig::zeste_command_line_override = true;
-            continue;
-        }
-        if (args[i] == QStringLiteral("--zeste-reports-file") && i + 1 < args.size()) {
-            Zeste::BugReports::SetListPath(args[++i].toStdString());
             continue;
         }
         if (args[i] == QStringLiteral("--zeste-report") && i + 1 < args.size()) {
@@ -1285,61 +1279,10 @@ void GMainWindow::ConnectWidgetEvents() {
             &MultiplayerState::UpdateThemedIcons);
 }
 
-void GMainWindow::ZesteFileReport() {
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Report a bug or inaccuracy"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* kind = new QComboBox;
-    kind->addItem(tr("Emulator inaccuracy (differs from a real 3DS)"));
-    kind->addItem(tr("Bug"));
-    auto* title = new QLineEdit;
-    auto* description = new QPlainTextEdit;
-    auto* screenshot = new QCheckBox(tr("Attach both screens"));
-    screenshot->setChecked(true);
-    auto* path = new QLabel(tr("Added to %1").arg(
-        QString::fromStdString(Zeste::BugReports::ListPath())));
-    path->setWordWrap(true);
-    layout->addRow(tr("Kind"), kind);
-    layout->addRow(tr("Title"), title);
-    layout->addRow(tr("Description"), description);
-    layout->addRow(screenshot);
-    layout->addRow(path);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    dialog.resize(560, 360);
-    if (dialog.exec() != QDialog::Accepted || title->text().trimmed().isEmpty()) {
-        return;
-    }
-    const auto report_kind =
-        kind->currentIndex() == 0 ? Zeste::BugReports::Kind::Inaccuracy : Zeste::BugReports::Kind::Bug;
-    const std::string title_text = title->text().trimmed().toStdString();
-    const std::string description_text = description->toPlainText().toStdString();
-    if (emu_thread && emu_thread->IsRunning()) {
-        // Filed on the emulation thread at the next frame, with the CPU/GPU context.
-        std::string command = report_kind == Zeste::BugReports::Kind::Bug ? "bug " : "inaccuracy ";
-        std::string flat = description_text;
-        std::replace(flat.begin(), flat.end(), '\n', ' ');
-        Zeste::Automation::QueueCommand(command + title_text + " | " + flat);
-    } else {
-        // Paused or stopped: no frame will run, file it now (screens from the last frame).
-        Zeste::BugReports::File(emulation_running ? &system : nullptr, report_kind, title_text,
-                                description_text, screenshot->isChecked() && emulation_running);
-    }
-    statusBar()->showMessage(tr("Report added to %1").arg(
-                                 QString::fromStdString(Zeste::BugReports::ListPath())),
-                             5000);
-}
-
 void GMainWindow::ConnectMenuEvents() {
     // Zeste menu (inserted before Help).
     auto* zeste_menu = new QMenu(tr("&Zeste"), this);
     menuBar()->insertMenu(ui->menu_Help->menuAction(), zeste_menu);
-    connect(zeste_menu->addAction(tr("&Report a bug or inaccuracy...")), &QAction::triggered,
-            this, [this] { ZesteFileReport(); });
-    connect(zeste_menu->addAction(tr("&Inaccuracy report...")), &QAction::triggered, this,
-            [this] { (new ZesteReportDialog(this))->show(); });
     connect(zeste_menu->addAction(tr("&Hardware accuracy settings...")), &QAction::triggered,
             this, [this] {
                 configure_open_zeste = true;

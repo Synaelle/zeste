@@ -111,7 +111,7 @@ std::vector<IssueSummary> GetIssues();
 /// "pc=... thread=... frame=..." text for a context.
 std::string FormatContextText(const Context& context);
 
-/// Formats the report as Markdown (used by WriteReport and the Qt "Inaccuracy report" dialog).
+/// Formats the report as Markdown (used by WriteReport).
 std::string FormatMarkdown(std::string_view title);
 
 } // namespace Zeste
