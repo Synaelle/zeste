@@ -24,8 +24,7 @@ When enabled (everything is off by default), it can:
 
 The rule is to only add what's known about the real console. Checks that rested on guessed
 numbers (GPU/CPU/SD timing models, a fixed-point "wrap" model for big triangles) were removed
-once that became clear. `tools/zeste/calib` has a test ROM I run on the console to measure
-things before Zeste models them.
+once that became clear; things get measured on the console before Zeste models them.
 
 Settings are under Zeste > Hardware accuracy settings, or `--strict` on the command line
 to turn everything on. `zeste.exe --help` lists the options.
