@@ -82,16 +82,13 @@ double temporary_frame_limit;
 
 void SetZesteStrictPreset(bool enabled) {
     values.zeste_strict_pica = enabled;
-    values.zeste_pica_timing = enabled;
     values.zeste_cpu_exceptions = enabled;
     values.zeste_kernel_fixes = enabled;
     values.zeste_cache_detection = enabled;
     values.zeste_hw_memory_layout = enabled;
-    values.zeste_cpu_speed_model = enabled;
     values.zeste_preempt_mode = enabled ? 2u : 0u;
     values.zeste_strict_priority = enabled;
-    values.zeste_sd_latency = enabled;
-    values.zeste_async_gx = enabled;
+    values.zeste_fs_checks = enabled;
 }
 
 bool ApplyZesteOptionByName(const std::string& name) {
@@ -99,11 +96,11 @@ bool ApplyZesteOptionByName(const std::string& name) {
         SetZesteStrictPreset(true);
     } else if (name == "strict_pica") {
         values.zeste_strict_pica = true;
-    } else if (name == "fixed_point_raster" || name == "draw_wrapped") {
-        // Retired: hardware measurements showed no fixed-point wrap or drop (see the guide).
+    } else if (name == "fixed_point_raster" || name == "draw_wrapped" || name == "pica_timing" ||
+               name == "cpu_speed_model" || name == "sd_latency" || name == "async_gx") {
+        // Retired: the wrap model was disproven on hardware; the timing models rested on guessed
+        // numbers (see ZESTE_CHANGES.md).
         LOG_WARNING(Common, "Zeste option {} was retired and does nothing", name);
-    } else if (name == "pica_timing") {
-        values.zeste_pica_timing = true;
     } else if (name == "cpu_exceptions") {
         values.zeste_cpu_exceptions = true;
     } else if (name == "kernel_fixes") {
@@ -112,18 +109,14 @@ bool ApplyZesteOptionByName(const std::string& name) {
         values.zeste_cache_detection = true;
     } else if (name == "hw_memory_layout") {
         values.zeste_hw_memory_layout = true;
-    } else if (name == "cpu_speed_model") {
-        values.zeste_cpu_speed_model = true;
     } else if (name == "preempt_svc") {
         values.zeste_preempt_mode = 1u;
     } else if (name == "preempt_random") {
         values.zeste_preempt_mode = 2u;
     } else if (name == "strict_priority") {
         values.zeste_strict_priority = true;
-    } else if (name == "sd_latency") {
-        values.zeste_sd_latency = true;
-    } else if (name == "async_gx") {
-        values.zeste_async_gx = true;
+    } else if (name == "fs_checks") {
+        values.zeste_fs_checks = true;
     } else if (name == "none") {
         SetZesteStrictPreset(false);
     } else {
@@ -134,11 +127,11 @@ bool ApplyZesteOptionByName(const std::string& name) {
 
 bool IsAnyZesteOptionEnabled() {
     return values.zeste_strict_pica.GetValue() ||
-           values.zeste_pica_timing.GetValue() || values.zeste_cpu_exceptions.GetValue() ||
+           values.zeste_cpu_exceptions.GetValue() ||
            values.zeste_kernel_fixes.GetValue() || values.zeste_cache_detection.GetValue() ||
-           values.zeste_hw_memory_layout.GetValue() || values.zeste_cpu_speed_model.GetValue() ||
+           values.zeste_hw_memory_layout.GetValue() ||
            values.zeste_preempt_mode.GetValue() != 0 || values.zeste_strict_priority.GetValue() ||
-           values.zeste_sd_latency.GetValue() || values.zeste_async_gx.GetValue();
+           values.zeste_fs_checks.GetValue();
 }
 
 void LogSettings() {
@@ -160,17 +153,14 @@ void LogSettings() {
     log_setting("Renderer_Debug", values.renderer_debug.GetValue());
     log_setting("Renderer_PicaDebugging", values.pica_debugging.GetValue());
     log_setting("Zeste_StrictPica", values.zeste_strict_pica.GetValue());
-    log_setting("Zeste_PicaTiming", values.zeste_pica_timing.GetValue());
     log_setting("Zeste_CpuExceptions", values.zeste_cpu_exceptions.GetValue());
     log_setting("Zeste_KernelFixes", values.zeste_kernel_fixes.GetValue());
     log_setting("Zeste_CacheDetection", values.zeste_cache_detection.GetValue());
     log_setting("Zeste_HwMemoryLayout", values.zeste_hw_memory_layout.GetValue());
-    log_setting("Zeste_CpuSpeedModel", values.zeste_cpu_speed_model.GetValue());
     log_setting("Zeste_PreemptMode", values.zeste_preempt_mode.GetValue());
     log_setting("Zeste_PreemptSeed", values.zeste_preempt_seed.GetValue());
     log_setting("Zeste_StrictPriority", values.zeste_strict_priority.GetValue());
-    log_setting("Zeste_SdLatency", values.zeste_sd_latency.GetValue());
-    log_setting("Zeste_AsyncGx", values.zeste_async_gx.GetValue());
+    log_setting("Zeste_FsChecks", values.zeste_fs_checks.GetValue());
     log_setting("Zeste_BreakOnFirst", values.zeste_break_on_first.GetValue());
     log_setting("Renderer_UseHwShader", values.use_hw_shader.GetValue());
     log_setting("Renderer_ShadersAccurateMul", values.shaders_accurate_mul.GetValue());

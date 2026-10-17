@@ -636,18 +636,15 @@ struct Values {
 
     // Zeste: hardware accuracy. Everything defaults to off (= Azahar behaviour).
     Setting<bool> zeste_strict_pica{false, Keys::zeste_strict_pica};
-    Setting<bool> zeste_pica_timing{false, Keys::zeste_pica_timing};
     Setting<bool> zeste_cpu_exceptions{false, Keys::zeste_cpu_exceptions};
     Setting<bool> zeste_kernel_fixes{false, Keys::zeste_kernel_fixes};
     Setting<bool> zeste_cache_detection{false, Keys::zeste_cache_detection};
     Setting<bool> zeste_hw_memory_layout{false, Keys::zeste_hw_memory_layout};
-    Setting<bool> zeste_cpu_speed_model{false, Keys::zeste_cpu_speed_model};
     /// 0 = off, 1 = reschedule at every SVC, 2 = random (seeded) preemption
     Setting<u32, true> zeste_preempt_mode{0, 0, 2, Keys::zeste_preempt_mode};
     Setting<u32> zeste_preempt_seed{1, Keys::zeste_preempt_seed};
     Setting<bool> zeste_strict_priority{false, Keys::zeste_strict_priority};
-    Setting<bool> zeste_sd_latency{false, Keys::zeste_sd_latency};
-    Setting<bool> zeste_async_gx{false, Keys::zeste_async_gx};
+    Setting<bool> zeste_fs_checks{false, Keys::zeste_fs_checks};
     Setting<bool> zeste_break_on_first{false, Keys::zeste_break_on_first};
     Setting<u32, true> zeste_report_log_limit{3, 1, 1000, Keys::zeste_report_log_limit};
     Setting<bool> zeste_write_report{true, Keys::zeste_write_report};

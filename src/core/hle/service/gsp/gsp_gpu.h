@@ -198,10 +198,6 @@ public:
     bool ZesteIsGpuRightHeld() const {
         return thread_id_with_rights != std::numeric_limits<u32>::max();
     }
-
-    /// Zeste (asynchronous GX transfers): the command GSP was waiting for completed; process the
-    /// rest of the right holder's command queue.
-    void ZesteResumeQueue();
     ~GSP_GPU() = default;
 
     void ClientDisconnected(std::shared_ptr<Kernel::ServerSession> server_session) override;
@@ -262,13 +258,6 @@ private:
     bool HasGpuRight(Kernel::HLERequestContext& ctx);
 
     void ProcessPendingInterruptImpl(InterruptId interrupt_id, u32 thread_id);
-
-    /// Executes the right holder's queued GX commands; returns true when the reply must be
-    /// delayed (delay_game_render_thread_us).
-    bool ProcessCommandQueue();
-
-    /// Zeste: GSP waits for a running GX command before starting the next queued one.
-    bool zeste_queue_blocked = false;
 
     /**
      * GSP_GPU::WriteHWRegs service function

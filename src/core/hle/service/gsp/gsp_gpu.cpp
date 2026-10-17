@@ -681,16 +681,7 @@ void GSP_GPU::SignalInterruptForThread(InterruptId interrupt_id, u32 thread_id, 
         perf_recorder.UpdateTime(interrupt_id, wait_delay_ns);
     }
 
-    const bool zeste_async_transfer =
-        Settings::values.zeste_async_gx.GetValue() &&
-        (interrupt_id == InterruptId::PSC0 || interrupt_id == InterruptId::PSC1 ||
-         interrupt_id == InterruptId::PPF);
-    if (Settings::values.zeste_pica_timing.GetValue()) {
-        // Zeste PICA timing: deliver P3D/PSC/PPF after the modelled GPU time, nothing added.
-    } else if (zeste_async_transfer) {
-        // Zeste asynchronous GX transfers: signalled at the modelled completion, which already
-        // includes the GSP request time.
-    } else if (Settings::values.simulate_3ds_gpu_timings.GetValue()) {
+    if (Settings::values.simulate_3ds_gpu_timings.GetValue()) {
 
         if (delay_texture_copy_completion) {
             wait_delay_ns += (interrupt_id == InterruptId::PPF)
@@ -859,27 +850,6 @@ void GSP_GPU::TriggerCmdReqQueue(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    // Zeste asynchronous GX transfers: while GSP waits for a running command, it continues the
-    // queue by itself when that command completes (GSP_GPU::ZesteResumeQueue).
-    const bool requires_delay = zeste_queue_blocked ? false : ProcessCommandQueue();
-
-    if (requires_delay) {
-        ctx.RunAsync(
-            [](Kernel::HLERequestContext& ctx) {
-                return Settings::values.delay_game_render_thread_us.GetValue() * 1000;
-            },
-            [](Kernel::HLERequestContext& ctx) {
-                IPC::RequestBuilder rb(ctx, 1, 0);
-                rb.Push(ResultSuccess);
-            },
-            false);
-    } else {
-        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
-        rb.Push(ResultSuccess);
-    }
-}
-
-bool GSP_GPU::ProcessCommandQueue() {
     auto* command_buffer = GetCommandBuffer(thread_id_with_rights);
     auto& gpu = system.GPU();
 
@@ -920,23 +890,22 @@ bool GSP_GPU::ProcessCommandQueue() {
         if (command.stop) {
             command_buffer->status.Assign(CommandBuffer::STATUS_STOPPED);
         }
-
-        // Zeste asynchronous GX transfers: GSP starts the next command when this one is done
-        // (citro3d queues a command list and its display transfers together and relies on it).
-        if (Settings::values.zeste_async_gx.GetValue() && gpu.ZesteCommandBusy()) {
-            zeste_queue_blocked = true;
-            break;
-        }
     }
-    return requires_delay;
-}
 
-void GSP_GPU::ZesteResumeQueue() {
-    zeste_queue_blocked = false;
-    if (thread_id_with_rights == std::numeric_limits<u32>::max() || shared_memory == nullptr) {
-        return;
+    if (requires_delay) {
+        ctx.RunAsync(
+            [](Kernel::HLERequestContext& ctx) {
+                return Settings::values.delay_game_render_thread_us.GetValue() * 1000;
+            },
+            [](Kernel::HLERequestContext& ctx) {
+                IPC::RequestBuilder rb(ctx, 1, 0);
+                rb.Push(ResultSuccess);
+            },
+            false);
+    } else {
+        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+        rb.Push(ResultSuccess);
     }
-    ProcessCommandQueue();
 }
 
 void GSP_GPU::SetDisplayTransfer(Kernel::HLERequestContext& ctx) {

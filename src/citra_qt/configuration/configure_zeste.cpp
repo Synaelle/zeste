@@ -59,17 +59,6 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         tr("Report, per draw, NaN/Inf vertex data, vertices beyond the screen range measured on "
            "hardware, viewports outside the framebuffer and invalid texture/buffer/address "
            "state. Forces the software vertex shader path."));
-    pica_timing = MakeCheck(
-        gpu, tr("PICA timing model"),
-        tr("Delay the P3D interrupt by an approximate PICA cycle cost (vertices, fragments, "
-           "commands) so C3D_GetDrawingTime and frame rates are meaningful."));
-    async_gx = MakeCheck(
-        gpu, tr("Asynchronous GX transfers"),
-        tr("Display transfers, texture copies and memory fills take time as on a New 3DS: the "
-           "destination keeps its old contents until the modelled completion, then the copy "
-           "lands and the interrupt fires. GSP starts the next queued command only when the "
-           "previous one is done. CPU reads of a destination still being written are "
-           "reported."));
     root->addWidget(gpu_group);
 
     auto* mem_group = new QGroupBox(tr("CPU and memory"));
@@ -91,10 +80,6 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         mem, tr("Hardware-like memory layout (applies at boot)"),
         tr("Place the APPLICATION linear heap at the same physical addresses as a New 3DS "
            "(above 0x28000000 in 178 MB mode) and report 124 MB for .3dsx files."));
-    cpu_speed_model = MakeCheck(
-        mem, tr("Model 268/804 MHz CPU speed"),
-        tr("Make osSetSpeedupEnable / PTMSYSM_ConfigureNew3DSCPU change the emulated CPU speed "
-           "(268 MHz when off, 804 MHz when on) instead of being ignored."));
     root->addWidget(mem_group);
 
     auto* sched_group = new QGroupBox(tr("Scheduling (race exposure)"));
@@ -118,9 +103,10 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
 
     auto* sys_group = new QGroupBox(tr("System"));
     auto* sys = new QVBoxLayout(sys_group);
-    sd_latency = MakeCheck(sys, tr("Hardware SD card latency"),
-                           tr("Per-request SD card latency modelled on hardware measurements: "
-                              "small reads and directory operations become slow."));
+    fs_checks = MakeCheck(sys, tr("File-system checks (remove_all)"),
+                          tr("Report deleting entries of a directory while a listing of it is "
+                             "still open: what std::filesystem::remove_all does, and it never "
+                             "returns on hardware."));
     root->addWidget(sys_group);
 
     auto* rep_group = new QGroupBox(tr("Reporting"));
@@ -153,34 +139,28 @@ ConfigureZeste::~ConfigureZeste() = default;
 
 void ConfigureZeste::SetStrictPreset(bool enabled) {
     strict_pica->setChecked(enabled);
-    pica_timing->setChecked(enabled);
-    async_gx->setChecked(enabled);
     cpu_exceptions->setChecked(enabled);
     kernel_fixes->setChecked(enabled);
     cache_detection->setChecked(enabled);
     if (!is_powered_on) {
         hw_memory_layout->setChecked(enabled);
     }
-    cpu_speed_model->setChecked(enabled);
     preempt_mode->setCurrentIndex(enabled ? 2 : 0);
     strict_priority->setChecked(enabled);
-    sd_latency->setChecked(enabled);
+    fs_checks->setChecked(enabled);
 }
 
 void ConfigureZeste::SetConfiguration() {
     const auto& v = Settings::values;
     strict_pica->setChecked(v.zeste_strict_pica.GetValue());
-    pica_timing->setChecked(v.zeste_pica_timing.GetValue());
-    async_gx->setChecked(v.zeste_async_gx.GetValue());
     cpu_exceptions->setChecked(v.zeste_cpu_exceptions.GetValue());
     kernel_fixes->setChecked(v.zeste_kernel_fixes.GetValue());
     cache_detection->setChecked(v.zeste_cache_detection.GetValue());
     hw_memory_layout->setChecked(v.zeste_hw_memory_layout.GetValue());
-    cpu_speed_model->setChecked(v.zeste_cpu_speed_model.GetValue());
     preempt_mode->setCurrentIndex(static_cast<int>(v.zeste_preempt_mode.GetValue()));
     preempt_seed->setValue(static_cast<int>(v.zeste_preempt_seed.GetValue()));
     strict_priority->setChecked(v.zeste_strict_priority.GetValue());
-    sd_latency->setChecked(v.zeste_sd_latency.GetValue());
+    fs_checks->setChecked(v.zeste_fs_checks.GetValue());
     break_on_first->setChecked(v.zeste_break_on_first.GetValue());
     report_log_limit->setValue(static_cast<int>(v.zeste_report_log_limit.GetValue()));
     write_report->setChecked(v.zeste_write_report.GetValue());
@@ -190,17 +170,14 @@ void ConfigureZeste::SetConfiguration() {
 void ConfigureZeste::ApplyConfiguration() {
     auto& v = Settings::values;
     v.zeste_strict_pica = strict_pica->isChecked();
-    v.zeste_pica_timing = pica_timing->isChecked();
-    v.zeste_async_gx = async_gx->isChecked();
     v.zeste_cpu_exceptions = cpu_exceptions->isChecked();
     v.zeste_kernel_fixes = kernel_fixes->isChecked();
     v.zeste_cache_detection = cache_detection->isChecked();
     v.zeste_hw_memory_layout = hw_memory_layout->isChecked();
-    v.zeste_cpu_speed_model = cpu_speed_model->isChecked();
     v.zeste_preempt_mode = static_cast<u32>(preempt_mode->currentIndex());
     v.zeste_preempt_seed = static_cast<u32>(preempt_seed->value());
     v.zeste_strict_priority = strict_priority->isChecked();
-    v.zeste_sd_latency = sd_latency->isChecked();
+    v.zeste_fs_checks = fs_checks->isChecked();
     v.zeste_break_on_first = break_on_first->isChecked();
     v.zeste_report_log_limit = static_cast<u32>(report_log_limit->value());
     v.zeste_write_report = write_report->isChecked();

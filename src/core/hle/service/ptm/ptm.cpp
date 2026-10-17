@@ -14,8 +14,6 @@
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/service/mcu/mcu_rtc.h"
 #include "core/hle/service/ptm/ptm.h"
-#include "core/zeste_timing.h"
-#include "core/core.h"
 #include "core/hle/service/ptm/ptm_gets.h"
 #include "core/hle/service/ptm/ptm_play.h"
 #include "core/hle/service/ptm/ptm_sets.h"
@@ -46,19 +44,6 @@ void Module::Interface::GetShellState(Kernel::HLERequestContext& ctx) {
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(ResultSuccess);
     rb.Push(ptm->shell_open);
-}
-
-void Module::Interface::ConfigureNew3DSCPU(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx);
-    const u8 value = rp.Pop<u8>();
-    if (Settings::values.zeste_cpu_speed_model.GetValue()) {
-        Zeste::Timing::SetCpuSpeedup(ptm->system.CoreTiming(), (value & 1) != 0);
-    } else {
-        // Azahar behaviour: accepted and ignored.
-        LOG_WARNING(Service_PTM, "(STUBBED) ConfigureNew3DSCPU value=0x{:X}", value);
-    }
-    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
-    rb.Push(ResultSuccess);
 }
 
 void Module::Interface::GetBatteryLevel(Kernel::HLERequestContext& ctx) {

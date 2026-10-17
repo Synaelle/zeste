@@ -26,8 +26,6 @@ class DebugContext;
 class PicaCore;
 struct RegsLcd;
 union ColorFill;
-struct DisplayTransferConfig;
-struct MemoryFillConfig;
 } // namespace Pica
 
 namespace Frontend {
@@ -107,12 +105,6 @@ public:
     /// Releases the renderer (for GL context destroy in libretro)
     void ReleaseRenderer();
 
-    /// Zeste (asynchronous GX transfers): true when the GSP command just executed is still
-    /// running (a deferred transfer or fill, or, with the PICA timing model, its P3D). GSP must
-    /// not start the next queued command before then; the GPU calls GSP_GPU::ZesteResumeQueue
-    /// when it is done.
-    bool ZesteCommandBusy();
-
 private:
     void SubmitCmdList(u32 index);
 
@@ -120,21 +112,6 @@ private:
     void MemoryFill(u32 index, u32 intr_index);
 
     void MemoryTransfer();
-
-    /// Performs a display transfer or texture copy now; returns its modelled duration (ns).
-    u64 PerformTransfer(Pica::DisplayTransferConfig& config);
-
-    /// Performs a memory fill now; returns its modelled duration (ns).
-    u64 PerformMemoryFill(const Pica::MemoryFillConfig& config);
-
-    // Zeste asynchronous GX transfers (zeste_async_gx): the operation is performed at its
-    // modelled completion time instead of at the register write.
-    struct ZesteGx;
-    std::unique_ptr<ZesteGx> zeste_gx;
-    void ZesteDeferTransfer();
-    void ZesteDeferMemoryFill(u32 index, u32 intr_index);
-    void ZesteCompleteOp(u64 id);
-    void ZesteOnP3D(u64 delay_ns);
 
     void VBlankCallback(uintptr_t user_data, s64 cycles_late);
 

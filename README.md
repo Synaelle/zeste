@@ -11,15 +11,21 @@ work fine in it. Zeste tries to catch those cases. Warning it's vibecoded but is
 When enabled (everything is off by default), it can:
 
 - turn bad memory accesses and stack overflows into real crashes / exception handler calls
-- warn about GPU stuff the real PICA200 doesn't like (near-plane triangles, broken textures,
-  buffers it can't reach)
+- warn about GPU stuff the real PICA200 doesn't like (NaN vertices, values outside its 24-bit
+  floats, broken textures, buffers it can't reach)
 - warn when the CPU cache wasn't flushed before the GPU or DSP reads something
 - use a memory layout closer to the real 178 MB mode
 - shake up thread scheduling to make races show up (with a seed, so they can be replayed)
-- slow down the SD card, GPU and CPU to roughly hardware speed
+- warn about the `std::filesystem::remove_all` pattern, which hangs on hardware
 - run with no window (`--headless`) and be driven by a script or over RPC: inputs,
-  screenshots, memory and GPU command dumps, HOME / sleep / close
+  screenshots, memory dumps, GPU command dumps with the vertices of chosen draws,
+  HOME / sleep / close
 - boot a `.cia` straight from the command line
+
+The rule is to only add what's known about the real console. Checks that rested on guessed
+numbers (GPU/CPU/SD timing models, a fixed-point "wrap" model for big triangles) were removed
+once that became clear. `tools/zeste/calib` has a test ROM I run on the console to measure
+things before Zeste models them.
 
 Settings are under Zeste > Hardware accuracy settings, or `--strict` on the command line
 to turn everything on. `zeste.exe --help` lists the options.
