@@ -17,7 +17,7 @@
 #include "core/file_sys/directory_backend.h"
 #include "core/file_sys/file_backend.h"
 #include "core/hle/result.h"
-#include "core/zeste_timing.h"
+#include "core/zeste_fs.h"
 
 namespace FileSys {
 
@@ -70,7 +70,7 @@ public:
     bool Close() override {
         if (zeste_listed) {
             zeste_listed = false;
-            Zeste::Timing::OnSdDirectoryClose(zeste_path);
+            Zeste::Fs::OnDirectoryClose(zeste_path);
         }
         return true;
     }

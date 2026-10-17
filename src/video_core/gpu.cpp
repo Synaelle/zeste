@@ -2,23 +2,17 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
-#include <algorithm>
-#include <optional>
-#include <vector>
 #include "common/archives.h"
 #include "common/hacks/hack_manager.h"
 #include "common/microprofile.h"
-#include "common/settings.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/service/gsp/gsp_gpu.h"
 #include "core/hle/service/plgldr/plgldr.h"
-#include "core/hle/service/sm/sm.h"
 #include "core/loader/loader.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/gpu.h"
 #include "core/zeste_cache.h"
-#include "core/zeste_gx.h"
 #include "video_core/gpu_debugger.h"
 #include "video_core/gpu_impl.h"
 #include "video_core/pica/pica_core.h"
@@ -90,104 +84,6 @@ public:
     }
 };
 
-namespace {
-
-u64 TransferDelayNanoseconds(Pica::DisplayTransferConfig config) {
-    const u32 size = config.is_texture_copy
-                         ? config.texture_copy.size
-                         : config.input_width * config.input_height *
-                               BytesPerPixel(config.input_format);
-    return DelayGenerator::CalculateDelayNanoseconds(
-        DelayGenerator::GetCopyMode(config.IsInputVRAM(), config.IsOutputVRAM()), true, size);
-}
-
-u64 FillDelayNanoseconds(const Pica::MemoryFillConfig& config) {
-    // Treat fill as texture transfer from VRAM
-    return DelayGenerator::CalculateDelayNanoseconds(
-        DelayGenerator::GetCopyMode(true, config.IsVRAM()), true,
-        config.GetEndAddress() - config.GetStartAddress());
-}
-
-/// Reports a transfer source the CPU wrote without a data cache flush (cache detection).
-void CheckTransferSourceFlushed(Memory::MemorySystem& memory,
-                                const Pica::DisplayTransferConfig& config) {
-    if (config.is_texture_copy) {
-        Zeste::Cache::CheckDeviceRead(memory, config.GetPhysicalInputAddress(),
-                                      config.texture_copy.size, "texture copy source");
-    } else {
-        Zeste::Cache::CheckDeviceRead(
-            memory, config.GetPhysicalInputAddress(),
-            config.input_width * config.input_height * BytesPerPixel(config.input_format),
-            "display transfer source");
-    }
-}
-
-/// Bytes a display transfer or texture copy writes, from its output address.
-u32 TransferOutputSpan(const Pica::DisplayTransferConfig& config) {
-    if (!config.is_texture_copy) {
-        return config.output_width * config.output_height * BytesPerPixel(config.output_format);
-    }
-    const u32 size = config.texture_copy.size & ~15u;
-    const u32 gap = config.texture_copy.output_gap * 16;
-    const u32 width = gap == 0 ? size : config.texture_copy.output_width * 16;
-    if (width == 0) {
-        return size;
-    }
-    const u32 lines = (size + width - 1) / width;
-    return lines * (width + gap) - gap;
-}
-
-} // Anonymous namespace
-
-/// Zeste asynchronous GX transfers: time the GSP module takes to handle a GX command before the
-/// operation starts. This is Azahar's hardware-measured GSP request time ("Every gsp request
-/// takes a constant amount of time to be processed", sync_delay_nanoseconds in gsp_gpu.cpp, used
-/// by "Simulate 3DS GPU timings"). The hardware calibration needs it: v2's GPU copies of 256 and
-/// 375 KB were still unfinished after two IPC round trips (~100 us), while the speed table alone
-/// gives 46-68 us.
-constexpr u64 ZesteGspRequestNanoseconds = 300 * 1000;
-
-/// Zeste asynchronous GX transfers: operations waiting for their modelled completion.
-struct GPU::ZesteGx {
-    struct Op {
-        u64 id;
-        bool is_fill;
-        Pica::DisplayTransferConfig transfer; ///< Registers at the trigger
-        Pica::MemoryFillConfig fill;          ///< Registers at the trigger
-        u32 fill_index;
-        std::optional<Service::GSP::InterruptId> interrupt;
-        u64 group; ///< Fills of one two-buffer GSP command: the last one signals
-        s64 done_ticks;
-    };
-
-    Core::TimingEventType* complete_event = nullptr;
-    Core::TimingEventType* resume_event = nullptr;
-    std::vector<Op> ops;
-    u64 next_id = 1;
-    u64 next_group = 1;
-    s64 transfer_free = 0;           ///< The transfer engine is busy until then
-    std::array<s64, 2> fill_free{};  ///< Each fill unit is busy until then
-    s64 command_done = 0;            ///< Completion of the GSP command being executed
-    u64 fill_group = 0;              ///< Set while a two-buffer memory fill command runs
-    bool in_gsp_command = false;     ///< The trigger comes from a GSP command (not a register)
-
-    /// When an operation triggered now can start on an engine that is busy until `engine_free`.
-    s64 StartTicks(s64 now, s64 engine_free) const {
-        const s64 request = in_gsp_command ? nsToCycles(ZesteGspRequestNanoseconds) : 0;
-        return std::max(now + request, engine_free);
-    }
-
-    void Schedule(GPU& gpu, Op op, PAddr dst, u32 dst_size, const char* what) {
-        auto& impl = *gpu.impl;
-        const s64 now = impl.timing.GetTicks();
-        op.id = next_id++;
-        command_done = std::max(command_done, op.done_ticks);
-        impl.timing.ScheduleEvent(op.done_ticks - now, complete_event, op.id);
-        ::Zeste::Gx::AddPending(impl.system, op.id, dst, dst_size, what, op.done_ticks);
-        ops.push_back(op);
-    }
-};
-
 MICROPROFILE_DEFINE(GPU_DisplayTransfer, "GPU", "DisplayTransfer", MP_RGB(100, 100, 255));
 MICROPROFILE_DEFINE(GPU_CmdlistProcessing, "GPU", "Cmdlist Processing", MP_RGB(100, 255, 100));
 
@@ -202,23 +98,9 @@ GPU::GPU(Core::System& system, Frontend::EmuWindow& emu_window,
 
     // Bind the rasterizer to the PICA GPU
     impl->pica.BindRasterizer(impl->rasterizer);
-
-    zeste_gx = std::make_unique<ZesteGx>();
-    zeste_gx->complete_event = impl->timing.RegisterEvent(
-        "Zeste::GxComplete", [this](uintptr_t id, s64) { ZesteCompleteOp(id); });
-    zeste_gx->resume_event =
-        impl->timing.RegisterEvent("Zeste::GxResumeQueue", [this](uintptr_t, s64) {
-            if (auto gsp = impl->system.ServiceManager().GetService<Service::GSP::GSP_GPU>(
-                    "gsp::Gpu")) {
-                gsp->ZesteResumeQueue();
-            }
-        });
-    Zeste::Gx::Reset();
 }
 
-GPU::~GPU() {
-    Zeste::Gx::Reset();
-}
+GPU::~GPU() = default;
 
 constexpr Result ResultInvalidGpuBuffer(ErrorDescription::InvalidAddress, ErrorModule::GX,
                                         ErrorSummary::InvalidArgument,
@@ -263,15 +145,7 @@ std::optional<PAddr> GPU::VirtualToPhysicalAddress(VAddr addr, u32 size) {
 
 void GPU::SetInterruptHandler(Service::GSP::InterruptHandler handler) {
     impl->signal_interrupt = handler;
-    // Zeste: the P3D delay of the PICA timing model tells when a command list completes.
-    Service::GSP::InterruptHandler pica_handler = [this, handler](Service::GSP::InterruptId id,
-                                                                  u64 delay_ns) {
-        if (id == Service::GSP::InterruptId::P3D) {
-            ZesteOnP3D(delay_ns);
-        }
-        handler(id, delay_ns);
-    };
-    impl->pica.SetInterruptHandler(pica_handler);
+    impl->pica.SetInterruptHandler(handler);
 }
 
 void GPU::FlushRegion(PAddr addr, u32 size) {
@@ -290,8 +164,6 @@ Result GPU::Execute(const Service::GSP::Command& command) {
     using Service::GSP::CommandId;
     auto& regs = impl->pica.regs;
     Result result = ResultSuccess;
-    zeste_gx->command_done = 0;
-    zeste_gx->in_gsp_command = true;
 
     switch (command.id) {
     case CommandId::RequestDma: {
@@ -360,7 +232,6 @@ Result GPU::Execute(const Service::GSP::Command& command) {
         // Write to the memory fill GPU registers.
         // If both buffers are set GSP dispatches PSC0 only.
         const bool has_both_bufs = params.start1 != 0 && params.start2 != 0;
-        zeste_gx->fill_group = has_both_bufs ? zeste_gx->next_group++ : 0;
         if (params.start1 != 0) {
             const auto start = translate(params.start1, params.end1);
             if (!start) {
@@ -444,9 +315,6 @@ Result GPU::Execute(const Service::GSP::Command& command) {
         LOG_ERROR(HW_GPU, "Unknown command {:#08X}", command.id.Value());
         result = ResultUnknownGxCommand;
     }
-
-    zeste_gx->fill_group = 0;
-    zeste_gx->in_gsp_command = false;
 
     // Notify debugger that a GSP command was processed.
     if (impl->debug_context) {
@@ -648,13 +516,15 @@ void GPU::MemoryFill(u32 index, u32 intr_index) {
         return;
     }
 
-    if (Zeste::Gx::Enabled()) [[unlikely]] {
-        ZesteDeferMemoryFill(index, intr_index);
-        return;
+    // Perform memory fill.
+    if (!impl->rasterizer->AccelerateFill(config)) {
+        impl->sw_blitter->MemoryFill(config);
     }
 
-    // Perform memory fill.
-    const u64 delay = PerformMemoryFill(config);
+    // Treat fill as texture transfer from VRAM
+    u64 delay = DelayGenerator::CalculateDelayNanoseconds(
+        DelayGenerator::GetCopyMode(true, config.IsVRAM()), true,
+        config.GetEndAddress() - config.GetStartAddress());
 
     // It seems that it won't signal interrupt if "address_start" is zero.
     // TODO: hwtest this
@@ -672,21 +542,6 @@ void GPU::MemoryFill(u32 index, u32 intr_index) {
     config.finished.Assign(1);
 }
 
-u64 GPU::PerformMemoryFill(const Pica::MemoryFillConfig& config) {
-    if (Zeste::Cache::Enabled()) [[unlikely]] {
-        // Written by the GPU: device reads trust it, CPU reads need an invalidate.
-        const PAddr start = config.GetStartAddress();
-        const PAddr end = config.GetEndAddress();
-        if (start != 0 && end > start) {
-            Zeste::Cache::OnDeviceWrite(impl->memory, start, end - start);
-        }
-    }
-    if (!impl->rasterizer->AccelerateFill(config)) {
-        impl->sw_blitter->MemoryFill(config);
-    }
-    return FillDelayNanoseconds(config);
-}
-
 void GPU::MemoryTransfer() {
     // Check if a transfer was triggered.
     auto& config = impl->pica.regs.display_transfer_config;
@@ -694,22 +549,6 @@ void GPU::MemoryTransfer() {
         return;
     }
 
-    if (Zeste::Gx::Enabled()) [[unlikely]] {
-        ZesteDeferTransfer();
-        return;
-    }
-
-    if (Zeste::Cache::Enabled()) [[unlikely]] {
-        CheckTransferSourceFlushed(impl->memory, config);
-    }
-    const u64 delay = PerformTransfer(config);
-
-    // Complete transfer.
-    config.trigger.Assign(0);
-    impl->signal_interrupt(Service::GSP::InterruptId::PPF, delay);
-}
-
-u64 GPU::PerformTransfer(Pica::DisplayTransferConfig& config) {
     MICROPROFILE_SCOPE(GPU_DisplayTransfer);
 
     // Notify debugger about the display transfer.
@@ -718,18 +557,31 @@ u64 GPU::PerformTransfer(Pica::DisplayTransferConfig& config) {
     }
 
     if (Zeste::Cache::Enabled()) [[unlikely]] {
-        Zeste::Cache::OnDeviceWrite(
-            impl->memory, config.GetPhysicalOutputAddress(),
-            config.is_texture_copy
-                ? static_cast<u32>(config.texture_copy.size)
-                : config.output_width * config.output_height * BytesPerPixel(config.output_format));
+        if (config.is_texture_copy) {
+            Zeste::Cache::CheckDeviceRead(impl->memory, config.GetPhysicalInputAddress(),
+                                          config.texture_copy.size, "texture copy source");
+            Zeste::Cache::OnDeviceWrite(impl->memory, config.GetPhysicalOutputAddress(),
+                                        config.texture_copy.size);
+        } else {
+            Zeste::Cache::CheckDeviceRead(
+                impl->memory, config.GetPhysicalInputAddress(),
+                config.input_width * config.input_height * BytesPerPixel(config.input_format),
+                "display transfer source");
+            Zeste::Cache::OnDeviceWrite(
+                impl->memory, config.GetPhysicalOutputAddress(),
+                config.output_width * config.output_height * BytesPerPixel(config.output_format));
+        }
     }
 
+    u64 delay{};
     // Perform memory transfer
     if (config.is_texture_copy) {
         if (!impl->rasterizer->AccelerateTextureCopy(config)) {
             impl->sw_blitter->TextureCopy(config);
         }
+        delay = DelayGenerator::CalculateDelayNanoseconds(
+            DelayGenerator::GetCopyMode(config.IsInputVRAM(), config.IsOutputVRAM()), true,
+            config.texture_copy.size);
     } else {
         if (right_eye_disabler->ShouldAllowDisplayTransfer(config.GetPhysicalInputAddress(),
                                                            config.input_height)) {
@@ -737,112 +589,14 @@ u64 GPU::PerformTransfer(Pica::DisplayTransferConfig& config) {
                 impl->sw_blitter->DisplayTransfer(config);
             }
         }
-    }
-    return TransferDelayNanoseconds(config);
-}
-
-void GPU::ZesteDeferTransfer() {
-    // The trigger bit stays set (busy) until the transfer completes.
-    auto& config = impl->pica.regs.display_transfer_config;
-    auto& z = *zeste_gx;
-    if (Zeste::Cache::Enabled()) [[unlikely]] {
-        // The source must be flushed before the trigger, not before the completion.
-        CheckTransferSourceFlushed(impl->memory, config);
-    }
-    ZesteGx::Op op{};
-    op.is_fill = false;
-    op.transfer = config;
-    op.interrupt = Service::GSP::InterruptId::PPF;
-    // One transfer engine: a transfer triggered while another runs starts after it.
-    const s64 start = z.StartTicks(impl->timing.GetTicks(), z.transfer_free);
-    op.done_ticks = start + nsToCycles(TransferDelayNanoseconds(config));
-    z.transfer_free = op.done_ticks;
-    z.Schedule(*this, op, config.GetPhysicalOutputAddress(), TransferOutputSpan(config),
-               config.is_texture_copy ? "texture copy" : "display transfer");
-}
-
-void GPU::ZesteDeferMemoryFill(u32 index, u32 intr_index) {
-    // The trigger bit stays set (busy) until the fill completes.
-    auto& config = impl->pica.regs.memory_fill_config[index];
-    auto& z = *zeste_gx;
-    ZesteGx::Op op{};
-    op.is_fill = true;
-    op.fill = config;
-    op.fill_index = index;
-    // It seems that it won't signal interrupt if "address_start" is zero.
-    if (config.GetStartAddress() != 0 && intr_index <= 1) {
-        op.interrupt =
-            intr_index == 0 ? Service::GSP::InterruptId::PSC0 : Service::GSP::InterruptId::PSC1;
-    }
-    op.group = z.fill_group;
-    const s64 start = z.StartTicks(impl->timing.GetTicks(), z.fill_free[index]);
-    op.done_ticks = start + nsToCycles(FillDelayNanoseconds(config));
-    z.fill_free[index] = op.done_ticks;
-    const PAddr dst = config.GetStartAddress();
-    const PAddr dst_end = config.GetEndAddress();
-    z.Schedule(*this, op, dst, dst_end > dst ? dst_end - dst : 0, "memory fill");
-}
-
-void GPU::ZesteCompleteOp(u64 id) {
-    auto& z = *zeste_gx;
-    const auto it =
-        std::find_if(z.ops.begin(), z.ops.end(), [id](const ZesteGx::Op& o) { return o.id == id; });
-    if (it == z.ops.end()) {
-        return; // Not ours any more (a savestate was loaded while it was pending)
-    }
-    ZesteGx::Op op = *it;
-    z.ops.erase(it);
-    Zeste::Gx::RemovePending(impl->system, id);
-
-    const auto same_engine_pending = [&] {
-        return std::any_of(z.ops.begin(), z.ops.end(), [&](const ZesteGx::Op& o) {
-            return o.is_fill == op.is_fill && (!op.is_fill || o.fill_index == op.fill_index);
-        });
-    };
-    if (op.is_fill) {
-        PerformMemoryFill(op.fill);
-        if (!same_engine_pending()) {
-            auto& config = impl->pica.regs.memory_fill_config[op.fill_index];
-            config.trigger.Assign(0);
-            config.finished.Assign(1);
-        }
-    } else {
-        PerformTransfer(op.transfer);
-        if (!same_engine_pending()) {
-            impl->pica.regs.display_transfer_config.trigger.Assign(0);
-        }
+        delay = DelayGenerator::CalculateDelayNanoseconds(
+            DelayGenerator::GetCopyMode(config.IsInputVRAM(), config.IsOutputVRAM()), true,
+            config.input_width * config.input_height * BytesPerPixel(config.input_format));
     }
 
-    // The interrupt fires once the data has landed; for a two-buffer fill, after both fills.
-    if (op.interrupt && op.group != 0) {
-        const auto other = std::find_if(z.ops.begin(), z.ops.end(), [&](const ZesteGx::Op& o) {
-            return o.group == op.group;
-        });
-        if (other != z.ops.end()) {
-            other->interrupt = op.interrupt;
-            op.interrupt.reset();
-        }
-    }
-    if (op.interrupt) {
-        impl->signal_interrupt(*op.interrupt, 0);
-    }
-}
-
-void GPU::ZesteOnP3D(u64 delay_ns) {
-    // With the PICA timing model, a command list is done when its P3D interrupt fires.
-    if (zeste_gx && Zeste::Gx::Enabled() && Settings::values.zeste_pica_timing.GetValue()) {
-        zeste_gx->command_done = std::max(zeste_gx->command_done,
-                                          impl->timing.GetTicks() + nsToCycles(delay_ns));
-    }
-}
-
-bool GPU::ZesteCommandBusy() {
-    const s64 now = impl->timing.GetTicks();
-    if (zeste_gx->command_done <= now) {
-        return false;
-    }
-    impl->timing.ScheduleEvent(zeste_gx->command_done - now, zeste_gx->resume_event);
-    return true;
+    // Complete transfer.
+    config.trigger.Assign(0);
+    impl->signal_interrupt(Service::GSP::InterruptId::PPF, delay);
 }
 
 void GPU::SetVBlankHook(std::function<void()> hook) {

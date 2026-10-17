@@ -28,7 +28,6 @@
 #include "core/file_sys/file_backend.h"
 #include "core/hle/result.h"
 #include "core/hle/service/fs/archive.h"
-#include "core/zeste_timing.h"
 
 namespace Service::FS {
 
@@ -117,9 +116,8 @@ ArchiveManager::OpenFileFromArchive(ArchiveHandle archive_handle, const FileSys:
         return std::make_pair(FileSys::ResultInvalidArchiveHandle, std::chrono::nanoseconds{0});
     }
 
-    std::chrono::nanoseconds open_timeout_ns{archive->GetOpenDelayNs()};
+    const std::chrono::nanoseconds open_timeout_ns{archive->GetOpenDelayNs()};
     auto backend = archive->OpenFile(path, mode, attributes);
-    open_timeout_ns += std::chrono::nanoseconds{Zeste::Timing::TakeSdDelayNs()};
     if (backend.Failed()) {
         return std::make_pair(backend.Code(), open_timeout_ns);
     }

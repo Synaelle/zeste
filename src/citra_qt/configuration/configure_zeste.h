@@ -36,10 +36,7 @@ private:
     QComboBox* preempt_mode;
     QSpinBox* preempt_seed;
     QCheckBox* strict_priority;
-    QCheckBox* pica_timing;
-    QCheckBox* async_gx;
-    QCheckBox* cpu_speed_model;
-    QCheckBox* sd_latency;
+    QCheckBox* fs_checks;
     QCheckBox* break_on_first;
     QSpinBox* report_log_limit;
     QCheckBox* write_report;

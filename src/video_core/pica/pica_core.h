@@ -7,7 +7,6 @@
 #include <string>
 #include "common/common_types.h"
 #include "core/hle/service/gsp/gsp_interrupt.h"
-#include "video_core/pica/zeste_pica.h"
 #include "video_core/pica/dirty_regs.h"
 #include "video_core/pica/geometry_pipeline.h"
 #include "video_core/pica/packed_attribute.h"
@@ -141,8 +140,6 @@ private:
     void ZesteRecordTriangle(const OutputVertex& v0, const OutputVertex& v1,
                              const OutputVertex& v2);
     void ZesteRecordDrawEnd();
-    /// Draw-mode switch check (strict PICA): called at every draw and immediate-mode vertex.
-    void ZesteBeginDraw(u8 kind);
 
     void HandleSpecialRegBatch(u32 id, const u32* values, u32 count);
 
@@ -393,8 +390,6 @@ public:
 private:
     struct ZesteState {
         bool strict = false;    ///< Strict PICA checks active for the current draw
-        bool timing = false;    ///< PICA cost model active for the current draw
-        double gpu_cycles = 0;  ///< Modelled GPU work since the last P3D interrupt
         u32 draw_index = 0;     ///< Draws since the last VBlank
         u32 draw_cmdlist = 0;   ///< Command list address of the current draw
         u32 draw_offset = 0;    ///< Offset of the draw command in that list
@@ -410,16 +405,6 @@ private:
         std::string dump_filter;   ///< Tag substring ("*" = all) of draws whose vertices are dumped
         bool dump_vertices = false; ///< The current draw's triangles are being dumped
         u32 dump_triangles = 0, dump_cut = 0, dump_outside = 0;
-        // Draw-mode switch check: the mode of the previous draw in the current command list, and
-        // the work done in that mode since the last switch.
-        u32 list_seq = 0;          ///< Incremented for every command list
-        u32 mode_list_seq = 0;     ///< Command list of `mode`
-        bool mode_valid = false;
-        Zeste::DrawMode mode{};
-        Zeste::ModeRun mode_run{};
-        double draw_pixels = 0;    ///< Pixels covered by the current draw so far
-        u32 mode_draw_index = 0;   ///< Draw number of the current draw
-        u32 mode_draw_tag = 0;     ///< Tag of the current draw
         float dump_min_x = 0, dump_min_y = 0, dump_max_x = 0, dump_max_y = 0;
     } zeste;
 

@@ -97,26 +97,6 @@ struct ClipVertex {
 
 constexpr float NearEpsilon = 0.00001f;
 
-/// Clips the triangle against the w = epsilon plane (for the cost estimate).
-boost::container::static_vector<ClipVertex, 4> ClipNear(const std::array<ClipVertex, 3>& in) {
-    boost::container::static_vector<ClipVertex, 4> out;
-    for (std::size_t i = 0; i < 3; ++i) {
-        const ClipVertex& a = in[i];
-        const ClipVertex& b = in[(i + 1) % 3];
-        const bool a_in = a.w >= NearEpsilon;
-        const bool b_in = b.w >= NearEpsilon;
-        if (a_in) {
-            out.push_back(a);
-        }
-        if (a_in != b_in) {
-            const float t = (NearEpsilon - a.w) / (b.w - a.w);
-            out.push_back({a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t,
-                           NearEpsilon});
-        }
-    }
-    return out;
-}
-
 /// Byte offset of pixel (x, y) in a PICA framebuffer (8x8 tiles, Morton order inside a tile;
 /// the tile's base is enough for a range estimate).
 u64 TiledRowOffset(u32 y, u32 width, u32 bytes_per_pixel) {
@@ -461,169 +441,9 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
     }
 }
 
-namespace {
-
-using ClipPolygon = boost::container::static_vector<ClipVertex, 9>;
-
-/// Clips against w >= epsilon, z <= 0 (near) and z >= -w (far). False when nothing is left.
-bool ClipToDepthRange(ClipPolygon& poly, bool& cut) {
-    const std::array<float (*)(const ClipVertex&), 3> planes = {
-        [](const ClipVertex& c) { return c.w - NearEpsilon; },
-        [](const ClipVertex& c) { return -c.z; },
-        [](const ClipVertex& c) { return c.z + c.w; },
-    };
-    for (const auto plane : planes) {
-        const ClipPolygon in = poly;
-        poly.clear();
-        for (std::size_t i = 0; i < in.size(); ++i) {
-            const ClipVertex& a = in[i];
-            const ClipVertex& b = in[(i + 1) % in.size()];
-            const float da = plane(a), db = plane(b);
-            if (da >= 0) {
-                poly.push_back(a);
-            } else {
-                cut = true;
-            }
-            if ((da >= 0) != (db >= 0) && poly.size() < poly.capacity()) {
-                const float t = da / (da - db);
-                poly.push_back({a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
-                                a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t});
-            }
-        }
-        if (poly.size() < 3) {
-            return false;
-        }
-    }
-    return true;
-}
-
-} // Anonymous namespace
-
-float CoveredPixels(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
-                    const OutputVertex& v2) {
-    ClipPolygon poly;
-    for (const auto* v : {&v0, &v1, &v2}) {
-        poly.push_back({v->pos.x.ToFloat32(), v->pos.y.ToFloat32(), v->pos.z.ToFloat32(),
-                        v->pos.w.ToFloat32()});
-    }
-    bool cut = false;
-    if (!ClipToDepthRange(poly, cut)) {
-        return 0.0f;
-    }
-    const auto& r = regs.rasterizer;
-    const double half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
-    const double half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
-    const double off_x = r.viewport_corner.x;
-    const double off_y = r.viewport_corner.y;
-    std::vector<std::array<double, 2>> screen;
-    for (const auto& c : poly) {
-        screen.push_back({(c.x / c.w + 1.0) * half_x + off_x, (c.y / c.w + 1.0) * half_y + off_y});
-    }
-    const auto signed_area = [](const std::vector<std::array<double, 2>>& p) {
-        double a = 0;
-        for (std::size_t i = 0; i < p.size(); ++i) {
-            const auto& q = p[i];
-            const auto& n = p[(i + 1) % p.size()];
-            a += q[0] * n[1] - n[0] * q[1];
-        }
-        return a * 0.5;
-    };
-    // Face culling, as the software rasterizer decides it.
-    const double orientation = signed_area(screen);
-    switch (r.cull_mode.Value()) {
-    case RasterizerRegs::CullMode::KeepClockWise:
-        if (orientation >= 0) {
-            return 0.0f;
-        }
-        break;
-    case RasterizerRegs::CullMode::KeepCounterClockWise:
-        if (orientation <= 0) {
-            return 0.0f;
-        }
-        break;
-    default:
-        break;
-    }
-    // Clip to the viewport rectangle.
-    const double bounds[4] = {off_x, off_y, off_x + 2 * half_x, off_y + 2 * half_y};
-    for (int edge = 0; edge < 4; ++edge) {
-        const auto inside = [&](const std::array<double, 2>& p) {
-            return edge == 0 ? p[0] >= bounds[0]
-                 : edge == 1 ? p[1] >= bounds[1]
-                 : edge == 2 ? p[0] <= bounds[2]
-                             : p[1] <= bounds[3];
-        };
-        const auto cross = [&](const std::array<double, 2>& a, const std::array<double, 2>& b) {
-            const int axis = edge % 2;
-            const double t = (bounds[edge] - a[axis]) / (b[axis] - a[axis]);
-            return std::array<double, 2>{a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t};
-        };
-        const auto in = screen;
-        screen.clear();
-        for (std::size_t i = 0; i < in.size(); ++i) {
-            const auto& a = in[i];
-            const auto& b = in[(i + 1) % in.size()];
-            if (inside(a)) {
-                screen.push_back(a);
-            }
-            if (inside(a) != inside(b)) {
-                screen.push_back(cross(a, b));
-            }
-        }
-        if (screen.size() < 3) {
-            return 0.0f;
-        }
-    }
-    return static_cast<float>(std::abs(signed_area(screen)));
-}
-
-DrawMode CurrentDrawMode(const RegsInternal& regs, u8 kind) {
-    DrawMode mode;
-    mode.kind = kind;
-    mode.topology = static_cast<u8>(regs.pipeline.triangle_topology.Value());
-    mode.geostage = regs.reg_array[0x229] & 0x103;
-    mode.geostage2 = regs.reg_array[0x253] & 0x101;
-    return mode;
-}
-
-std::string DescribeDrawMode(const DrawMode& mode) {
-    static constexpr std::array<const char*, 3> kinds = {"array draw", "indexed draw",
-                                                         "immediate-mode vertices"};
-    static constexpr std::array<const char*, 4> topologies = {
-        "triangle list", "triangle strip", "triangle fan", "geometry-primitive mode"};
-    return fmt::format("{} in {} (GEOSTAGE_CONFIG 0x{:X}, GEOSTAGE_CONFIG2 0x{:X})",
-                       kinds[std::min<std::size_t>(mode.kind, 2)],
-                       topologies[mode.topology & 3], mode.geostage, mode.geostage2);
-}
-
-void ReportDrawModeSwitch(const RegsInternal& regs, const DrawMode& previous,
-                          const DrawMode& current, const ModeRun& run,
-                          const DrawLocation& where) {
-    const auto& fb = regs.framebuffer.framebuffer;
-    const double screen = std::max(1.0, static_cast<double>(fb.GetWidth()) * fb.GetHeight());
-    const double screens = run.pixels / screen;
-    const bool heavy = screens >= HeavyModeRunScreens;
-    ReportF(Category::PicaState, Site(heavy ? "mode-switch-heavy" : "mode-switch", where),
-            "draw mode changes from {} to {} in the same command list, behind {} draw(s) in the "
-            "previous mode that covered the screen {:.1f} times (heaviest: draw #{}{}, {:.1f} "
-            "screens). {} Rule: one primitive mode per frame | {}",
-            DescribeDrawMode(previous), DescribeDrawMode(current), run.draws, screens,
-            run.heaviest_index,
-            run.heaviest_tag ? fmt::format(" \"{}\"", ::Zeste::TagText(run.heaviest_tag))
-                             : std::string{},
-            run.heaviest_pixels / screen,
-            heavy ? "On hardware those vertices can still be in the pipeline when the new mode "
-                    "applies: behind draws covering the screen hundreds of times the vertex stream "
-                    "stayed one output out of step (OpenMW fireball, hardware tests #26-#33)."
-                  : "Light here; on hardware the switch broke the vertex stream behind draws "
-                    "covering the screen hundreds of times (OpenMW fireball, tests #26-#33); the "
-                    "threshold is not measured.",
-            Where(where));
-}
-
 TriangleDump DescribeTriangle(const RegsInternal& regs, const OutputVertex& v0,
                               const OutputVertex& v1, const OutputVertex& v2) {
-    using Polygon = ClipPolygon;
+    using Polygon = boost::container::static_vector<ClipVertex, 9>;
     const std::array<const OutputVertex*, 3> vs = {&v0, &v1, &v2};
     TriangleDump out;
     Polygon poly;
@@ -634,10 +454,35 @@ TriangleDump DescribeTriangle(const RegsInternal& regs, const OutputVertex& v0,
                                 poly.back().x, poly.back().y, poly.back().z, poly.back().w,
                                 v->tc0.x.ToFloat32(), v->tc0.y.ToFloat32());
     }
-    if (!ClipToDepthRange(poly, out.cut)) {
-        out.outside = true;
-        out.text += " | clipped away";
-        return out;
+    // Planes as distance functions: w >= epsilon, z <= 0 (near), z >= -w (far).
+    const std::array<float (*)(const ClipVertex&), 3> planes = {
+        [](const ClipVertex& c) { return c.w - NearEpsilon; },
+        [](const ClipVertex& c) { return -c.z; },
+        [](const ClipVertex& c) { return c.z + c.w; },
+    };
+    for (const auto plane : planes) {
+        Polygon in = poly;
+        poly.clear();
+        for (std::size_t i = 0; i < in.size(); ++i) {
+            const ClipVertex& a = in[i];
+            const ClipVertex& b = in[(i + 1) % in.size()];
+            const float da = plane(a), db = plane(b);
+            if (da >= 0) {
+                poly.push_back(a);
+            } else {
+                out.cut = true;
+            }
+            if ((da >= 0) != (db >= 0) && poly.size() < poly.capacity()) {
+                const float t = da / (da - db);
+                poly.push_back({a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
+                                a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t});
+            }
+        }
+        if (poly.size() < 3) {
+            out.outside = true;
+            out.text += " | clipped away";
+            return out;
+        }
     }
     const auto& r = regs.rasterizer;
     const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
@@ -657,62 +502,6 @@ TriangleDump DescribeTriangle(const RegsInternal& regs, const OutputVertex& v0,
         out.text += fmt::format(" ({:.6g}, {:.6g})", sx, sy);
     }
     return out;
-}
-
-u32 VertexShaderLength(const RegsInternal& regs, const ShaderSetup& vs) {
-    const auto& code = vs.GetProgramCode();
-    constexpr u32 OpcodeEnd = 0x22;
-    u32 length = 0;
-    for (u32 pc = regs.vs.main_offset; pc < code.size(); ++pc) {
-        ++length;
-        if ((code[pc] >> 26) == OpcodeEnd) {
-            break;
-        }
-    }
-    return std::max(length, 1u);
-}
-
-double DrawCostCycles(const RegsInternal& regs, const ShaderSetup& vs, u32 num_vertices) {
-    return CyclesPerDraw + static_cast<double>(num_vertices) * VertexShaderLength(regs, vs) *
-                               CyclesPerShaderInstructionPerVertex;
-}
-
-double TriangleCostCycles(const RegsInternal& regs, const OutputVertex& v0, const OutputVertex& v1,
-                          const OutputVertex& v2) {
-    const std::array<ClipVertex, 3> in = {{
-        {v0.pos.x.ToFloat32(), v0.pos.y.ToFloat32(), v0.pos.z.ToFloat32(), v0.pos.w.ToFloat32()},
-        {v1.pos.x.ToFloat32(), v1.pos.y.ToFloat32(), v1.pos.z.ToFloat32(), v1.pos.w.ToFloat32()},
-        {v2.pos.x.ToFloat32(), v2.pos.y.ToFloat32(), v2.pos.z.ToFloat32(), v2.pos.w.ToFloat32()},
-    }};
-    const auto clipped = ClipNear(in);
-    if (clipped.size() < 3) {
-        return CyclesPerTriangle * 0.2; // Rejected early
-    }
-    const auto& r = regs.rasterizer;
-    const float half_x = f24::FromRaw(r.viewport_size_x).ToFloat32();
-    const float half_y = f24::FromRaw(r.viewport_size_y).ToFloat32();
-    double area = 0.0;
-    float px = 0, py = 0, fx = 0, fy = 0;
-    for (std::size_t i = 0; i < clipped.size(); ++i) {
-        const float x = (clipped[i].x / clipped[i].w + 1.0f) * half_x;
-        const float y = (clipped[i].y / clipped[i].w + 1.0f) * half_y;
-        if (i == 0) {
-            fx = x;
-            fy = y;
-        } else {
-            area += static_cast<double>(px) * y - static_cast<double>(x) * py;
-        }
-        px = x;
-        py = y;
-    }
-    area += static_cast<double>(px) * fy - static_cast<double>(fx) * py;
-    area = std::abs(area) * 0.5;
-    const auto& fb = regs.framebuffer.framebuffer;
-    const double fb_area = static_cast<double>(fb.GetWidth()) * fb.GetHeight();
-    if (!std::isfinite(area)) {
-        area = fb_area;
-    }
-    return CyclesPerTriangle + std::min(area, fb_area) * CyclesPerFragment;
 }
 
 } // namespace Pica::Zeste

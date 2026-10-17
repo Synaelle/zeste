@@ -78,15 +78,6 @@ public:
         void GetShellState(Kernel::HLERequestContext& ctx);
 
         /**
-         * PTM::ConfigureNew3DSCPU service function (osSetSpeedupEnable)
-         *  Inputs:
-         *      1 : u8, bit 0: 804 MHz clock, bit 1: L2 cache
-         *  Outputs:
-         *      1 : Result code
-         */
-        void ConfigureNew3DSCPU(Kernel::HLERequestContext& ctx);
-
-        /**
          * PTM::GetBatteryLevel service function
          *  Outputs:
          *      1 : Result of function, 0 on success, otherwise error code
