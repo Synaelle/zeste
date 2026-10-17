@@ -66,3 +66,6 @@ GIT-TAG
 verify/
 # Zeste: local documentation (not published)
 docs/
+# Zeste: test and calibration ROMs (local only, not published)
+tools/zeste/testrom/
+tools/zeste/calib/
