@@ -14,6 +14,7 @@
 //   DOWN   : low-priority thread starved by a busy main thread (starvation report)
 //   SELECT : SD card timings and the remove_all pattern (SD latency model)
 //   UP     : texture copy read too early after a citro3d frame (asynchronous GX transfers)
+//   LEFT   : array draw right behind heavy indexed draws in one command list (draw-mode switch)
 //   START  : exit
 #include <3ds.h>
 #include <citro3d.h>
@@ -423,6 +424,46 @@ static void test_early_readback(void) {
     vramFree(src);
 }
 
+// One frame: 300 full-screen triangles drawn indexed (citro3d's geometry-primitive mode), then an
+// array draw in the same command list. On hardware this pattern (behind the OpenMW blast meshes)
+// left the vertex stream one output out of step. A second frame switches behind a light draw.
+static void draw_mode_switch_frame(int copies, const char* tag_name, u32 tag_id) {
+    static const vertex full[] = {
+        {0.0f, 0.0f, 0.5f, 0.2f, 0.2f, 0.6f, 1},
+        {800.0f, 0.0f, 0.5f, 0.2f, 0.2f, 0.6f, 1},
+        {0.0f, 480.0f, 0.5f, 0.2f, 0.2f, 0.6f, 1},
+    };
+    vertex* vbo = linearAlloc(sizeof(full) + sizeof(small_tri));
+    memcpy(vbo, full, sizeof(full));
+    memcpy(vbo + 3, small_tri, sizeof(small_tri));
+    GSPGPU_FlushDataCache(vbo, sizeof(full) + sizeof(small_tri));
+    u16* ibo = linearAlloc(sizeof(u16) * 3 * copies);
+    for (int i = 0; i < 3 * copies; i++)
+        ibo[i] = (u16)(i % 3);
+    GSPGPU_FlushDataCache(ibo, sizeof(u16) * 3 * copies);
+
+    Mtx_OrthoTilt(&projection, 0.0, 400.0, 0.0, 240.0, 0.0, 1.0, true);
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    C3D_RenderTargetClear(target, C3D_CLEAR_ALL, CLEAR_COLOR, 0);
+    C3D_FrameDrawOn(target);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projection, &projection);
+    C3D_BufInfo* buf = C3D_GetBufInfo();
+    BufInfo_Init(buf);
+    BufInfo_Add(buf, vbo, sizeof(vertex), 2, 0x10);
+    zeste_tag(tag_id, tag_name);
+    C3D_DrawElements(GPU_TRIANGLES, 3 * copies, C3D_UNSIGNED_SHORT, ibo);
+    zeste_tag(5, "array draw after the switch");
+    C3D_DrawArrays(GPU_TRIANGLES, 3, 3);
+    C3D_FrameEnd(0);
+}
+
+static void test_mode_switch(void) {
+    say("[LEFT] array draw behind 300 screens of indexed draws, then behind 1 screen");
+    draw_mode_switch_frame(300, "heavy indexed draw (300 screens)", 3);
+    draw_mode_switch_frame(1, "light indexed draw (1 screen)", 4);
+    say("[LEFT] done (expect a heavy and a light draw-mode switch report)");
+}
+
 static void test_near_plane(void) {
     say("[R] near-plane triangle with huge screen extent + NaN vertex");
     // One vertex just in front of the near plane, two far behind the camera.
@@ -447,7 +488,7 @@ int main(int argc, char** argv) {
     info_tests();
     say("A texbind(NULL)  B stack overflow  X null write+handler");
     say("Y unflushed VBO  L race  R near plane  UP early readback");
-    say("DOWN starvation  SELECT SD  START exit");
+    say("DOWN starvation  SELECT SD  LEFT mode switch  START exit");
 
     int frames = 0;
     while (aptMainLoop()) {
@@ -473,6 +514,8 @@ int main(int argc, char** argv) {
             test_sd();
         if (kDown & KEY_UP)
             test_early_readback();
+        if (kDown & KEY_LEFT)
+            test_mode_switch();
         if (!kDown)
             draw_vertices(small_tri, 3, true, false);
         if (++frames == 60)
