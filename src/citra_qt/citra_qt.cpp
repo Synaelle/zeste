@@ -234,7 +234,18 @@ static QString PrettyProductName() {
 }
 
 void GMainWindow::ShowCommandOutput(std::string title, std::string message) {
-    if (headless_mode) {
+    bool output_captured = false;
+#ifdef _WIN32
+    // Zeste: run from a script or an agent (stdout piped or redirected to a file), print the text
+    // instead of opening a dialog.
+    const DWORD out_type = GetFileType(GetStdHandle(STD_OUTPUT_HANDLE));
+    output_captured = out_type == FILE_TYPE_PIPE || out_type == FILE_TYPE_DISK;
+#endif
+    if (headless_mode || output_captured) {
+        if (output_captured && !headless_mode && title == "Help") {
+            std::cout << message << std::endl;
+            return;
+        }
         std::cout << title << ": " << message << std::endl;
         LOG_INFO(Frontend, "{}: {}", title, message);
         return;
