@@ -2,7 +2,9 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <algorithm>
 #include <array>
+#include <vector>
 #include "common/logging/log.h"
 #include "common/settings.h"
 #include "common/zeste_report.h"
@@ -23,6 +25,7 @@ constexpr std::size_t MaxCores = 4;
 
 /// ARM11 FSR values: translation fault (page), bit 11 = write (WnR).
 constexpr u32 FsrTranslationFaultPage = 0x7;
+constexpr u32 FsrPermissionFaultPage = 0xF;
 constexpr u32 FsrWrite = 1u << 11;
 
 enum class Type : u8 {
@@ -56,6 +59,13 @@ constexpr u32 CpsrItMask = 0x0600FC00;
 constexpr u32 CpsrModeUser = 0x10;
 
 CrashInfo g_crash;
+
+struct ReadOnlyRange {
+    u32 process_id;
+    VAddr start;
+    u32 size;
+};
+std::vector<ReadOnlyRange> g_read_only;
 
 /// Fills g_crash: registers, and a scan of the faulting thread's stack for return addresses.
 void CaptureCrash(Core::System& system, Core::ARM_Interface& core, const Pending& p) {
@@ -233,6 +243,43 @@ bool HasPending(u32 core_id) {
     return core_id < MaxCores && g_pending[core_id].active;
 }
 
+void AddReadOnlyRange(u32 process_id, VAddr start, u32 size) {
+    g_read_only.push_back({process_id, start, size});
+}
+
+void ClearReadOnlyRanges(u32 process_id) {
+    std::erase_if(g_read_only,
+                  [process_id](const ReadOnlyRange& r) { return r.process_id == process_id; });
+}
+
+bool OnReadOnlyWrite(Core::System& system, VAddr vaddr, u32 size) {
+    if (!Enabled() || !g_guest_access || g_read_only.empty() || !system.IsPoweredOn() ||
+        !system.HasRunningCore()) {
+        return false;
+    }
+    const auto process = system.Kernel().GetCurrentProcess();
+    if (!process) {
+        return false;
+    }
+    const bool read_only = std::any_of(g_read_only.begin(), g_read_only.end(), [&](const auto& r) {
+        return r.process_id == process->process_id && vaddr >= r.start &&
+               vaddr - r.start < r.size;
+    });
+    if (!read_only) {
+        return false;
+    }
+    auto& core = system.GetRunningCore();
+    const u32 id = core.GetID();
+    if (id < MaxCores && !g_pending[id].active) {
+        g_pending[id] = {true, Type::DataAbort, vaddr, FsrPermissionFaultPage | FsrWrite, size};
+    }
+    if (!core.ZesteRequestAbortHalt()) {
+        g_pending[id].active = false;
+        return false;
+    }
+    return true;
+}
+
 bool OnUnmappedAccess(Core::System& system, VAddr vaddr, u32 size, bool write) {
     if (!Enabled() || g_code_fetch || !g_guest_access || !system.IsPoweredOn() ||
         !system.HasRunningCore()) {
@@ -263,13 +310,23 @@ void DispatchPending(Core::System& system, Core::ARM_Interface& core) {
     const bool write = (p.fsr & FsrWrite) != 0;
     const u32 sp = core.GetReg(13);
     const bool stack = IsStackAccess(p.far, sp);
-    ReportF(stack ? Category::StackOverflow : Category::DataAbort,
-            fmt::format("{}@{:08X}", write ? "w" : "r", core.GetPC()),
-            "{} of {} bytes at unmapped 0x{:08X} by the instruction at 0x{:08X}{}: data abort on "
-            "hardware",
-            write ? "write" : "read", p.size, p.far, core.GetPC(),
-            stack ? fmt::format(" (sp=0x{:08X}: stack overflow below the thread's stack)", sp)
-                  : "");
+    const bool permission = (p.fsr & 0xF) == FsrPermissionFaultPage;
+    if (permission) {
+        ReportF(Category::DataAbort, fmt::format("ro@{:08X}", core.GetPC()),
+                "write of {} bytes at 0x{:08X} by the instruction at 0x{:08X}: the exheader maps "
+                "this memory read-only (for VRAM: \"1f000000-1f5fffff:r\"), so the CPU may not "
+                "write it: data abort (permission fault) on hardware. Write it with the GPU (a "
+                "DMA or texture copy from linear memory), or map it writable in the .rsf",
+                p.size, p.far, core.GetPC());
+    } else {
+        ReportF(stack ? Category::StackOverflow : Category::DataAbort,
+                fmt::format("{}@{:08X}", write ? "w" : "r", core.GetPC()),
+                "{} of {} bytes at unmapped 0x{:08X} by the instruction at 0x{:08X}{}: data abort "
+                "on hardware",
+                write ? "write" : "read", p.size, p.far, core.GetPC(),
+                stack ? fmt::format(" (sp=0x{:08X}: stack overflow below the thread's stack)", sp)
+                      : "");
+    }
 
     if (ConsumeBreakRequest()) {
         // "Break on first": leave the PC on the faulting instruction. It faults again (and is

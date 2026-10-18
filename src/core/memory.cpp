@@ -738,6 +738,10 @@ void MemorySystem::Write(const std::shared_ptr<PageTable>& page_table, const VAd
         auto it = page_table->watchpoint_pages_map.find(vaddr >> CITRA_PAGE_BITS);
         ASSERT_MSG(it != page_table->watchpoint_pages_map.end(),
                    "Missing memory for watchpoint page");
+        // Zeste: memory the exheader maps read-only (data abort instead of the write).
+        if (Zeste::Exceptions::OnReadOnlyWrite(impl->system, vaddr, sizeof(T))) {
+            return;
+        }
 
         std::memcpy(it->second.memory.GetPtr() + (vaddr & CITRA_PAGE_MASK), &data, sizeof(T));
 
@@ -755,6 +759,9 @@ void MemorySystem::Write(const std::shared_ptr<PageTable>& page_table, const VAd
         break;
     }
     case PageType::RasterizerCachedMemoryWatchpoint: {
+        if (Zeste::Exceptions::OnReadOnlyWrite(impl->system, vaddr, sizeof(T))) {
+            return;
+        }
         RasterizerFlushVirtualRegion(vaddr, sizeof(T), FlushMode::Invalidate);
         std::memcpy(GetPointerForRasterizerCache(vaddr), &data, sizeof(T));
 
@@ -793,6 +800,9 @@ bool MemorySystem::WriteExclusive(const VAddr vaddr, const T data, const T expec
         auto it = impl->current_page_table->watchpoint_pages_map.find(vaddr >> CITRA_PAGE_BITS);
         ASSERT_MSG(it != impl->current_page_table->watchpoint_pages_map.end(),
                    "Missing memory for watchpoint page");
+        if (Zeste::Exceptions::OnReadOnlyWrite(impl->system, vaddr, sizeof(T))) {
+            return false;
+        }
 
         const auto volatile_pointer =
             reinterpret_cast<volatile T*>(it->second.memory.GetPtr() + (vaddr & CITRA_PAGE_MASK));
@@ -814,6 +824,9 @@ bool MemorySystem::WriteExclusive(const VAddr vaddr, const T data, const T expec
         return Common::AtomicCompareAndSwap(volatile_pointer, data, expected);
     }
     case PageType::RasterizerCachedMemoryWatchpoint: {
+        if (Zeste::Exceptions::OnReadOnlyWrite(impl->system, vaddr, sizeof(T))) {
+            return false;
+        }
         RasterizerFlushVirtualRegion(vaddr, sizeof(T), FlushMode::Invalidate);
         const auto volatile_pointer =
             reinterpret_cast<volatile T*>(GetPointerForRasterizerCache(vaddr).GetPtr());

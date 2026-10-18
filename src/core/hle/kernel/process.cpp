@@ -23,6 +23,7 @@
 #include "core/hle/kernel/memory.h"
 #include "core/hle/kernel/process.h"
 #include "core/zeste_cache.h"
+#include "core/zeste_exceptions.h"
 #include "core/hle/kernel/resource_limit.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/kernel/vm_manager.h"
@@ -253,6 +254,21 @@ void Process::Run(s32 main_thread_priority, u32 stack_size) {
     kernel.MapSharedPages(vm_manager);
     for (const auto& mapping : address_mappings) {
         kernel.HandleSpecialMapping(vm_manager, mapping);
+    }
+    // Zeste real CPU exceptions: VRAM the exheader maps read-only is write-protected, as on
+    // hardware (Azahar maps it writable). The pages take the slow path so writes can be checked.
+    if (Zeste::Exceptions::Enabled()) {
+        Zeste::Exceptions::ClearReadOnlyRanges(process_id);
+        for (const auto& mapping : address_mappings) {
+            if (mapping.read_only && mapping.size != 0 &&
+                mapping.address >= Memory::VRAM_VADDR &&
+                mapping.address + mapping.size <= Memory::VRAM_VADDR + Memory::VRAM_SIZE) {
+                kernel.memory.RegisterWatchpoint(*this, mapping.address, mapping.size);
+                Zeste::Exceptions::AddReadOnlyRange(process_id, mapping.address, mapping.size);
+                LOG_INFO(Kernel, "Zeste: 0x{:08X}-0x{:08X} mapped read-only by the exheader",
+                         mapping.address, mapping.address + mapping.size);
+            }
+        }
     }
 
     auto plgldr = Service::PLGLDR::GetService(Core::System::GetInstance());

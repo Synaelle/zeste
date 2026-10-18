@@ -49,6 +49,17 @@ void DispatchPending(Core::System& system, Core::ARM_Interface& core);
 /// Called by the JIT when it cannot fetch an instruction. Returns true when handled.
 bool OnPrefetchAbort(Core::System& system, Core::ARM_Interface& core, VAddr pc);
 
+/// Read-only mappings the exheader asked for (for example "1f000000-1f5fffff:r", VRAM): a CPU
+/// write there is a permission fault on hardware (OpenMW test #71: memcpy into VRAM). Azahar
+/// has no write protection, so the pages are routed through the slow path (watchpoint pages) and
+/// writes are checked here. `process_id` scopes the range to one process.
+void AddReadOnlyRange(u32 process_id, VAddr start, u32 size);
+void ClearReadOnlyRanges(u32 process_id);
+
+/// Called by the memory system before a write to a watched page. Returns true when Zeste raised
+/// a data abort (the write must not happen).
+bool OnReadOnlyWrite(Core::System& system, VAddr vaddr, u32 size);
+
 /// True when a data abort is waiting for the given core.
 bool HasPending(u32 core_id);
 
