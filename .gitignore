@@ -69,3 +69,4 @@ docs/
 # Zeste: test and calibration ROMs (local only, not published)
 tools/zeste/testrom/
 tools/zeste/calib/
+tools/zeste/sdbench/
