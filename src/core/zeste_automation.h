@@ -32,6 +32,15 @@
 //   keyboard [text]                headless: answer the game's software keyboard with <text>
 //                                  and OK (queued if the game has not asked yet)
 //   keyboard-cancel                headless: press Cancel on the software keyboard
+//   wait-log [timeout=<frames|Ns>] [file=<sdmc:/path>] <text>
+//                                  pause the script until <text> appears in the game's debug
+//                                  output (or in that file); later commands move by the time
+//                                  waited; on timeout the run ends with exit code 3
+//   save-state <file> / load-state <file>
+//                                  save or load an emulator save state (same game build and
+//                                  same Zeste build only)
+//   speed <percent|unlimited|normal>  emulation speed limit (unlimited: as fast as possible)
+//   heap-report <file>             the game's newlib malloc heap: free blocks, largest block
 //   log <text>                     write a line to the log
 //   quit [exit code=0]             stop emulation and exit (headless) / stop (windowed)
 
@@ -39,6 +48,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 #include "common/common_types.h"
 
 namespace Core {
@@ -97,6 +107,17 @@ void SetQuitHandler(std::function<void(int)> handler);
 
 /// Clears the script and the input state (new boot).
 void Reset();
+
+/// The game's debug output (svcOutputDebugString), for wait-log and the run summary.
+void OnDebugOutput(const std::string& text);
+
+/// For the run summary: the last lines of the debug output, the screenshots saved by script/RPC
+/// commands, and why the run ended ("" if no command ended it).
+std::vector<std::string> RecentDebugOutput();
+std::vector<std::string> Screenshots();
+std::string ExitReason();
+/// Sets the exit reason unless one is already set.
+void SetExitReason(const std::string& reason);
 
 /// Saves the given LCD ("top" or "bottom") to a PNG through the frontend image interface.
 bool DumpLcd(Core::System& system, int screen, const std::string& path);

@@ -162,7 +162,9 @@ void System::SaveState(u32 slot) const {
     auto buffer = Common::Compression::CompressDataZSTDDefault(data);
 
     const u64 movie_id = movie.GetCurrentMovieID();
-    const auto path = GetSaveStatePath(title_id, movie_id, slot);
+    const auto path = save_state_path_override.empty()
+                          ? GetSaveStatePath(title_id, movie_id, slot)
+                          : std::exchange(save_state_path_override, std::string{});
     if (!FileUtil::CreateFullPath(path)) {
         throw std::runtime_error("Could not create path " + path);
     }
@@ -205,7 +207,12 @@ void System::LoadState(u32 slot) {
     }
 
     const u64 movie_id = movie.GetCurrentMovieID();
-    const auto path = GetSaveStatePath(title_id, movie_id, slot);
+    const auto path = save_state_path_override.empty()
+                          ? GetSaveStatePath(title_id, movie_id, slot)
+                          : std::exchange(save_state_path_override, std::string{});
+    if (!FileUtil::Exists(path)) {
+        throw std::runtime_error("No save state at " + path);
+    }
 
     std::vector<u8> decompressed;
     {

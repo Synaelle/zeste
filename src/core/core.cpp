@@ -166,7 +166,10 @@ System::ResultStatus System::RunLoop(bool tight_loop) {
         if (app_loader) {
             app_loader->ReadProgramId(title_id);
         }
-        auto info = GetSaveStateInfo(title_id, movie.GetCurrentMovieID(), param);
+        // Zeste: a save state loaded from a given file is validated by LoadState itself.
+        auto info = save_state_path_override.empty()
+                        ? GetSaveStateInfo(title_id, movie.GetCurrentMovieID(), param)
+                        : SaveStateInfo{.slot = param};
         if (info.slot == std::numeric_limits<u32>::max()) {
             // Should not happen
             status_details = "Failed to load savestate";

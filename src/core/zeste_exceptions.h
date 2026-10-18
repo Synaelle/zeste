@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <array>
+#include <string>
+#include <vector>
 #include "common/common_types.h"
 
 namespace Core {
@@ -48,5 +51,20 @@ bool OnPrefetchAbort(Core::System& system, Core::ARM_Interface& core, VAddr pc);
 
 /// True when a data abort is waiting for the given core.
 bool HasPending(u32 core_id);
+
+/// The exception that stopped the process (no handler installed), for the run summary.
+struct CrashInfo {
+    bool valid = false;
+    std::string type;          ///< "Data abort" / "Prefetch abort"
+    u32 fault_address = 0;
+    std::array<u32, 16> regs{}; ///< r0-r15 (r15 = the faulting instruction)
+    u32 cpsr = 0;
+    /// Stack words that point right after a BL/BLX in the code segment: likely return addresses,
+    /// innermost first (a heuristic stack scan, without frame pointers; may include stale ones).
+    std::vector<u32> stack_returns;
+    u32 code_start = 0;
+    u32 code_end = 0;
+};
+const CrashInfo& LastCrash();
 
 } // namespace Zeste::Exceptions

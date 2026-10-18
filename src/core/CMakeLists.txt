@@ -44,10 +44,14 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     zeste_exceptions.cpp
     zeste_exceptions.h
     zeste_sched.cpp
+    zeste_summary.cpp
+    zeste_summary.h
     zeste_sched.h
     zeste_system_events.cpp
     zeste_system_events.h
     zeste_fs.cpp
+    zeste_heap.cpp
+    zeste_heap.h
     zeste_keyboard.cpp
     zeste_keyboard.h
     zeste_fs.h

@@ -411,6 +411,11 @@ public:
 
     void LoadState(u32 slot);
 
+    /// Zeste: the next save or load uses this file instead of the slot's path (used once).
+    void SetSaveStatePathOverride(std::string path) {
+        save_state_path_override = std::move(path);
+    }
+
     std::vector<u8> SaveStateBuffer() const;
 
     bool LoadStateBuffer(std::vector<u8> buffer);
@@ -572,6 +577,7 @@ private:
 
     std::mutex signal_mutex;
     Signal current_signal;
+    mutable std::string save_state_path_override; ///< Zeste: see SetSaveStatePathOverride
     u32 signal_param;
 
     std::function<bool()> mic_permission_func;

@@ -55,6 +55,64 @@ constexpr u32 CpsrThumb = 1u << 5;
 constexpr u32 CpsrItMask = 0x0600FC00;
 constexpr u32 CpsrModeUser = 0x10;
 
+CrashInfo g_crash;
+
+/// Fills g_crash: registers, and a scan of the faulting thread's stack for return addresses.
+void CaptureCrash(Core::System& system, Core::ARM_Interface& core, const Pending& p) {
+    auto& memory = system.Memory();
+    const auto process = system.Kernel().GetCurrentProcess();
+    CrashInfo c;
+    c.valid = true;
+    c.type = p.type == Type::DataAbort ? "Data abort" : "Prefetch abort";
+    c.fault_address = p.far;
+    for (u32 i = 0; i < 15; ++i) {
+        c.regs[i] = core.GetReg(static_cast<int>(i));
+    }
+    c.regs[15] = core.GetPC();
+    c.cpsr = core.GetCPSR();
+    if (process && process->codeset) {
+        const auto& code = process->codeset->CodeSegment();
+        c.code_start = code.addr;
+        c.code_end = code.addr + code.size;
+    }
+    const auto valid = [&](VAddr a) { return process && memory.IsValidVirtualAddress(*process, a); };
+    const auto in_code = [&](u32 v) { return v >= c.code_start + 4 && v < c.code_end; };
+    // A return address follows a call: ARM BL/BLX (imm) or BLX (reg); Thumb BL/BLX pair or
+    // BLX (reg).
+    const auto after_call = [&](u32 v) {
+        if (v & 1) {
+            const VAddr ret = v & ~1u;
+            if (valid(ret - 4)) {
+                const u16 hi = memory.Read16(ret - 4);
+                if ((hi & 0xF800) == 0xF000) {
+                    return true;
+                }
+            }
+            return valid(ret - 2) && (memory.Read16(ret - 2) & 0xFF87) == 0x4780;
+        }
+        if ((v & 3) != 0 || !valid(v - 4)) {
+            return false;
+        }
+        const u32 insn = memory.Read32(v - 4);
+        return (insn & 0x0F000000) == 0x0B000000 || (insn & 0xFE000000) == 0xFA000000 ||
+               (insn & 0x0FFFFFF0) == 0x012FFF30;
+    };
+    if (c.code_end != 0) {
+        const u32 sp = c.regs[13];
+        for (u32 i = 0; i < 2048 && c.stack_returns.size() < 24; ++i) {
+            const VAddr a = sp + i * 4;
+            if (!valid(a)) {
+                break;
+            }
+            const u32 v = memory.Read32(a);
+            if (in_code(v & ~1u) && after_call(v)) {
+                c.stack_returns.push_back(v);
+            }
+        }
+    }
+    g_crash = std::move(c);
+}
+
 bool IsStackAccess(VAddr vaddr, u32 sp) {
     return vaddr < sp + 0x1000 && static_cast<u64>(vaddr) + 0x10000 >= sp;
 }
@@ -62,6 +120,7 @@ bool IsStackAccess(VAddr vaddr, u32 sp) {
 /// The process would die on hardware (no handler): report and stop like Azahar's exception
 /// handler does. The PC is moved past the faulting instruction so "Continue" behaves like Azahar.
 void StopWithoutHandler(Core::System& system, Core::ARM_Interface& core, const Pending& p) {
+    CaptureCrash(system, core, p);
     const u32 cpsr = core.GetCPSR();
     if (p.type == Type::DataAbort) {
         core.SetPC(core.GetPC() + ((cpsr & CpsrThumb) ? 2 : 4));
@@ -164,6 +223,10 @@ void SetCodeFetch(bool active) {
 
 void SetGuestAccess(bool active) {
     g_guest_access = active;
+}
+
+const CrashInfo& LastCrash() {
+    return g_crash;
 }
 
 bool HasPending(u32 core_id) {

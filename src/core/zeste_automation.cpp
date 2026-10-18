@@ -3,6 +3,7 @@
 // Refer to the misc/licenses/gplv2.txt file included.
 
 #include <algorithm>
+#include <iostream>
 #include <deque>
 #include <fstream>
 #include <mutex>
@@ -18,7 +19,9 @@
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/process.h"
 #include "core/memory.h"
+#include "common/settings.h"
 #include "core/zeste_automation.h"
+#include "core/zeste_heap.h"
 #include "core/zeste_keyboard.h"
 #include "core/zeste_core.h"
 #include "core/zeste_system_events.h"
@@ -43,8 +46,24 @@ struct HeldInput {
     u32 buttons;
 };
 
+/// A "wait-log" in progress: the script is paused until the text shows up.
+struct Wait {
+    bool active = false;
+    std::string text;
+    std::string file;       ///< Host path of the watched file ("" = the game's debug output)
+    u64 file_offset = 0;    ///< Bytes of the file already searched
+    std::string carry;      ///< End of the last read (a match may straddle two reads)
+    u64 started_frame = 0;
+    u64 deadline_frame = 0; ///< 0 = no timeout
+    bool seen = false;
+};
+
 struct State {
     std::mutex mutex;
+    Wait wait;
+    std::deque<std::string> debug_lines; ///< Last lines of the game's debug output
+    std::vector<std::string> screenshots;
+    std::string exit_reason;
     std::deque<Command> commands;
     std::vector<HeldInput> held;
     u32 sticky_buttons = 0;
@@ -125,13 +144,58 @@ s64 ParseSigned(const std::string& text) {
     }
 }
 
+/// "120" = 120 frames (60 Hz), "30s" = 30 seconds (1800 frames).
+u64 ParseFrames(const std::string& text, u64 fallback = 0) {
+    if (!text.empty() && (text.back() == 's' || text.back() == 'S')) {
+        try {
+            return static_cast<u64>(std::stod(text.substr(0, text.size() - 1)) * 60.0 + 0.5);
+        } catch (...) {
+            return fallback;
+        }
+    }
+    return ParseNumber(text, fallback);
+}
+
+/// "sdmc:/x/y" -> host path in the emulated SD card; other paths are used as they are.
+std::string HostPath(const std::string& path) {
+    constexpr std::string_view prefix = "sdmc:/";
+    if (path.rfind(prefix, 0) == 0) {
+        return FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir) + path.substr(prefix.size());
+    }
+    return path;
+}
+
+std::string JoinFrom(const std::vector<std::string>& args, std::size_t first) {
+    std::string text;
+    for (std::size_t i = first; i < args.size(); ++i) {
+        text += (i > first ? " " : "") + args[i];
+    }
+    return text;
+}
+
+void Quit(Core::System& system, int code, const std::string& reason) {
+    auto& s = GetState();
+    {
+        std::scoped_lock lock{s.mutex};
+        if (s.exit_reason.empty()) {
+            s.exit_reason = reason;
+        }
+    }
+    if (s.quit_handler) {
+        s.quit_handler(code);
+    } else {
+        system.RequestShutdown();
+    }
+}
+
 std::string ValidateCommand(const std::vector<std::string>& args) {
     static const std::vector<std::pair<std::string, std::size_t>> min_args = {
         {"press", 2},     {"hold", 2},      {"release", 2},   {"touch", 3},   {"stick", 3},
         {"lcd", 3},       {"screenshot", 2}, {"dump-mem", 4}, {"dump-phys", 4}, {"dump-vram", 2},
         {"dump-cmdlist", 2}, {"home", 1},   {"sleep", 1},     {"close", 1},   {"rosalina", 1},
         {"report", 1},    {"log", 1},       {"quit", 1},      {"keyboard", 1},
-        {"keyboard-cancel", 1},
+        {"keyboard-cancel", 1}, {"wait-log", 2}, {"save-state", 2}, {"load-state", 2},
+        {"speed", 2},     {"heap-report", 2},
     };
     if (args.empty()) {
         return "empty command";
@@ -259,11 +323,7 @@ void Execute(Core::System& system, const Command& command) {
         Zeste::WriteReport(args.size() > 1 ? args[1] : Zeste::DefaultReportBasePath(),
                            "on request");
     } else if (verb == "keyboard") {
-        std::string text;
-        for (std::size_t i = 1; i < args.size(); ++i) {
-            text += (i > 1 ? " " : "") + args[i];
-        }
-        Keyboard::Type(text);
+        Keyboard::Type(JoinFrom(args, 1));
     } else if (verb == "keyboard-cancel") {
         Keyboard::Cancel();
     } else if (verb == "log") {
@@ -275,15 +335,137 @@ void Execute(Core::System& system, const Command& command) {
     } else if (verb == "quit") {
         const int code = args.size() > 1 ? static_cast<int>(ParseSigned(args[1])) : 0;
         LOG_INFO(Zeste, "automation: quit (exit code {}) at frame {}", code, frame);
-        if (s.quit_handler) {
-            s.quit_handler(code);
-        } else {
-            system.RequestShutdown();
+        Quit(system, code, fmt::format("quit command at frame {} (exit code {})", frame, code));
+    } else if (verb == "wait-log") {
+        // wait-log [timeout=<frames|Ns>] [file=<sdmc:/path or host path>] <text...>
+        Wait wait;
+        wait.active = true;
+        wait.started_frame = frame;
+        std::size_t first = 1;
+        for (; first < args.size(); ++first) {
+            if (args[first].rfind("timeout=", 0) == 0) {
+                wait.deadline_frame = frame + ParseFrames(args[first].substr(8), 0);
+            } else if (args[first].rfind("file=", 0) == 0) {
+                wait.file = HostPath(args[first].substr(5));
+                // Only text written from now on counts.
+                wait.file_offset = FileUtil::Exists(wait.file) ? FileUtil::GetSize(wait.file) : 0;
+            } else {
+                break;
+            }
         }
+        wait.text = JoinFrom(args, first);
+        LOG_INFO(Zeste, "automation: waiting for \"{}\" in {} (frame {})", wait.text,
+                 wait.file.empty() ? std::string{"the debug output"} : wait.file, frame);
+        std::scoped_lock lock{s.mutex};
+        s.wait = std::move(wait);
+    } else if (verb == "save-state" || verb == "load-state") {
+        const std::string path = HostPath(args[1]);
+        LOG_INFO(Zeste, "automation: {} {}", verb, path);
+        system.SetSaveStatePathOverride(path);
+        system.SendSignal(verb == "save-state" ? Core::System::Signal::Save
+                                               : Core::System::Signal::Load,
+                          99);
+    } else if (verb == "speed") {
+        // speed <percent | unlimited | normal>
+        const std::string value = Common::ToLower(args[1]);
+        if (value == "normal") {
+            Settings::is_temporary_frame_limit = false;
+        } else {
+            Settings::is_temporary_frame_limit = true;
+            Settings::temporary_frame_limit =
+                value == "unlimited" ? 0.0 : static_cast<double>(ParseNumber(value, 100));
+        }
+        LOG_INFO(Zeste, "automation: speed {}", value);
+    } else if (verb == "heap-report") {
+        Heap::WriteReport(system, HostPath(args[1]));
+    }
+}
+
+/// Pauses the script until the awaited text shows up; then later script commands move by the
+/// time waited, so "@frame" lines after a wait-log stay relative to it.
+void CheckWait(Core::System& system, u64 frame) {
+    auto& s = GetState();
+    std::unique_lock lock{s.mutex};
+    auto& wait = s.wait;
+    if (!wait.seen && !wait.file.empty() && frame % 10 == 0 && FileUtil::Exists(wait.file)) {
+        const u64 size = FileUtil::GetSize(wait.file);
+        if (size < wait.file_offset) {
+            wait.file_offset = 0; // the file was rewritten
+        }
+        if (size > wait.file_offset) {
+            FileUtil::IOFile file{wait.file, "rb"};
+            std::string chunk(static_cast<std::size_t>(size - wait.file_offset), '\0');
+            file.Seek(static_cast<s64>(wait.file_offset), SEEK_SET);
+            chunk.resize(file.ReadBytes(chunk.data(), chunk.size()));
+            wait.file_offset += chunk.size();
+            const std::string text = wait.carry + chunk;
+            wait.seen = text.find(wait.text) != std::string::npos;
+            wait.carry = text.substr(text.size() > wait.text.size() ? text.size() - wait.text.size()
+                                                                     : 0);
+        }
+    }
+    if (wait.seen) {
+        const u64 waited = frame - wait.started_frame;
+        LOG_INFO(Zeste, "automation: \"{}\" seen at frame {} (waited {} frames)", wait.text,
+                 frame, waited);
+        for (auto& command : s.commands) {
+            if (!command.immediate) {
+                command.frame += waited;
+            }
+        }
+        wait = {};
+        return;
+    }
+    if (wait.deadline_frame != 0 && frame >= wait.deadline_frame) {
+        const std::string text = wait.text;
+        wait = {};
+        lock.unlock();
+        LOG_ERROR(Zeste, "automation: wait-log timed out waiting for \"{}\"", text);
+        std::cout << "Zeste wait-log: timed out waiting for \"" << text << "\"" << std::endl;
+        Quit(system, 3,
+             fmt::format("wait-log timed out at frame {} waiting for \"{}\"", frame, text));
     }
 }
 
 } // Anonymous namespace
+
+void OnDebugOutput(const std::string& text) {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    s.debug_lines.push_back(text);
+    while (s.debug_lines.size() > 40) {
+        s.debug_lines.pop_front();
+    }
+    if (s.wait.active && s.wait.file.empty() && text.find(s.wait.text) != std::string::npos) {
+        s.wait.seen = true;
+    }
+}
+
+std::vector<std::string> RecentDebugOutput() {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    return {s.debug_lines.begin(), s.debug_lines.end()};
+}
+
+std::vector<std::string> Screenshots() {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    return s.screenshots;
+}
+
+std::string ExitReason() {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    return s.exit_reason;
+}
+
+void SetExitReason(const std::string& reason) {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    if (s.exit_reason.empty()) {
+        s.exit_reason = reason;
+    }
+}
 
 bool LoadScript(const std::string& path) {
     std::string text;
@@ -312,10 +494,10 @@ bool LoadScriptText(const std::string& script, const std::string& path) {
             continue;
         }
         if (tokens[0][0] == '@') {
-            frame = ParseNumber(tokens[0].substr(1), frame);
+            frame = ParseFrames(tokens[0].substr(1), frame);
             tokens.erase(tokens.begin());
         } else if (tokens[0][0] == '+') {
-            frame += ParseNumber(tokens[0].substr(1), 0);
+            frame += ParseFrames(tokens[0].substr(1), 0);
             tokens.erase(tokens.begin());
         }
         if (tokens.empty()) {
@@ -353,11 +535,15 @@ void OnVBlank(Core::System& system) {
         return;
     }
     const u64 frame = Zeste::CurrentFrame(system);
+    if (s.wait.active) {
+        CheckWait(system, frame);
+    }
     std::vector<Command> due;
     {
         std::scoped_lock lock{s.mutex};
         while (!s.commands.empty() &&
-               (s.commands.front().immediate || s.commands.front().frame <= frame)) {
+               (s.commands.front().immediate ||
+                (!s.wait.active && s.commands.front().frame <= frame))) {
             due.push_back(std::move(s.commands.front()));
             s.commands.pop_front();
         }
@@ -469,6 +655,11 @@ bool DumpLcd(Core::System& system, int screen, const std::string& path) {
     }
     const bool ok = image_interface->EncodePNG(path, columns, column_pixels, pixels);
     if (ok) {
+        {
+            auto& s = GetState();
+            std::scoped_lock lock{s.mutex};
+            s.screenshots.push_back(path);
+        }
         LOG_INFO(Zeste, "automation: LCD {} (0x{:08X}, format {}) saved to {}",
                  screen == 0 ? "top" : "bottom", addr, static_cast<u32>(format), path);
     }

@@ -21,6 +21,10 @@ When enabled (everything is off by default), it can:
 - run with no window (`--headless`) and be driven by a script or over RPC: inputs,
   screenshots, memory dumps, GPU command dumps with the vertices of chosen draws,
   HOME / sleep / close, and text for the game's on-screen keyboard (`keyboard <text>`)
+- make scripted runs faster and steadier: save states (`--load-state`), unlimited speed,
+  waiting for a line in the game's log, quit after N seconds
+- report the game's malloc heap (free memory, largest block) and write a summary of each run
+  (why it ended, the crash with function names when given the `.elf`, the last log lines)
 - boot a `.cia` straight from the command line
 
 The rule is to only add what's known about the real console. Checks that rested on guessed

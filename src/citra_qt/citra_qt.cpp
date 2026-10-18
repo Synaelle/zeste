@@ -121,6 +121,7 @@
 #include "audio_core/sink_details.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_keyboard.h"
+#include "core/zeste_summary.h"
 #include "core/zeste_core.h"
 #include "common/zeste_run.h"
 #include "input_common/main.h"
@@ -480,8 +481,35 @@ GMainWindow::GMainWindow(Core::System& system_)
             continue;
         }
         if (args[i] == QStringLiteral("--quit-after") && i + 1 < args.size()) {
-            const std::string frame = args[++i].toStdString();
-            Zeste::Automation::LoadScriptText("@" + frame + " quit 0");
+            // Frames at 60 Hz ("1800"), or seconds with an "s" ("30s").
+            const std::string when = args[++i].toStdString();
+            if (!Zeste::Automation::LoadScriptText("@" + when + " quit 0", "--quit-after")) {
+                ShowCommandOutput("Zeste", "Invalid --quit-after value: " + when);
+                exit(1);
+            }
+            continue;
+        }
+        if (args[i] == QStringLiteral("--load-state") && i + 1 < args.size()) {
+            // Loaded once the game has booted (same game build and same Zeste build only).
+            Zeste::Automation::LoadScriptText("@1 load-state " + args[++i].toStdString(),
+                                              "--load-state");
+            continue;
+        }
+        if (args[i] == QStringLiteral("--speed") && i + 1 < args.size()) {
+            const QString speed = args[++i].toLower();
+            bool ok = true;
+            const int percent = speed == QStringLiteral("unlimited") ? 0 : speed.toInt(&ok);
+            if (!ok || percent < 0) {
+                ShowCommandOutput("Zeste", "Invalid --speed: " + speed.toStdString() +
+                                               " (a percentage or 'unlimited')");
+                exit(1);
+            }
+            Settings::values.frame_limit = static_cast<double>(percent);
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--elf") && i + 1 < args.size()) {
+            Zeste::Summary::SetElfPath(args[++i].toStdString());
             continue;
         }
         if (args[i] == QStringLiteral("--renderer") && i + 1 < args.size()) {
@@ -4309,6 +4337,20 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         return;
     }
 
+    // Zeste: a save state that cannot be saved or loaded is reported and emulation goes on.
+    if (Settings::values.zeste_no_modal_dialogs.GetValue() &&
+        (result == Core::System::ResultStatus::ErrorSavestate ||
+         result == Core::System::ResultStatus::ErrorSavestateBuildMismatch)) {
+        LOG_ERROR(Frontend, "Zeste: save state failed: {}", details);
+        std::cout << "Zeste save state failed: " << details << std::endl;
+        QTimer::singleShot(100, this, [this] {
+            if (emu_thread) {
+                emu_thread->SetRunning(true);
+            }
+        });
+        return;
+    }
+
     // Zeste: automated runs never wait on a modal dialog. Errors are logged; emulation stops on
     // anything that would otherwise ask the user.
     if (Settings::values.zeste_no_modal_dialogs.GetValue() &&
@@ -4316,6 +4358,8 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         LOG_CRITICAL(Frontend, "Core error {} (no-dialogs mode, stopping emulation): {}",
                      static_cast<u32>(result), details);
         headless_exit_code = 2; // Only used when the process exits with emulation.
+        Zeste::Automation::SetExitReason(
+            fmt::format("emulation error {}: {}", static_cast<u32>(result), details));
         // The emulation thread follows ErrorThrown with a blocking DebugModeEntered signal: let
         // the event loop deliver it before joining the thread in ShutdownGame (no dialog loop
         // does it for us here).
@@ -5075,12 +5119,19 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     GMainWindow main_window(system);
     const auto finish_run = [](int code) {
         Zeste::Run::Note("exit code", std::to_string(code));
+        if (!Zeste::Run::Folder().empty()) {
+            Zeste::Summary::Write(Zeste::Run::Folder(), code,
+                                  GMainWindow::headless_boot_failed ? "the game could not boot"
+                                  : code == 2 ? "emulation stopped on an error (see the log)"
+                                              : "emulation stopped");
+        }
         if (GMainWindow::headless_mode && !Zeste::Run::Folder().empty()) {
             const std::string report = Zeste::Run::Folder() + "zeste_report.md";
             std::cout << "Zeste run folder: " << Zeste::Run::Folder() << std::endl;
             if (FileUtil::Exists(report)) {
                 std::cout << "Zeste report: " << report << std::endl;
             }
+            std::cout << "Zeste summary: " << Zeste::Run::Folder() << "summary.md" << std::endl;
             std::cout << "Zeste exit code: " << code << std::endl;
         }
         return code;

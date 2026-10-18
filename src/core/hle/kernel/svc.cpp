@@ -12,6 +12,7 @@
 #include "common/scm_rev.h"
 #include "common/settings.h"
 #include "common/zeste_report.h"
+#include "core/zeste_automation.h"
 #include "core/zeste_sched.h"
 #include "core/arm/arm_interface.h"
 #include "core/arm/exception_handler.h"
@@ -1201,6 +1202,7 @@ void SVC::OutputDebugString(VAddr address, s32 len) {
     std::string string(len, ' ');
     memory.ReadBlock(*kernel.GetCurrentProcess(), address, string.data(), len);
     LOG_DEBUG(Debug_Emulated, "{}", string);
+    ::Zeste::Automation::OnDebugOutput(string);
 
     // Zeste draw tags: "ZESTE:tag <id> <text>" registers the text of a tag id (see the guide).
     constexpr std::string_view TagPrefix = "ZESTE:tag ";
