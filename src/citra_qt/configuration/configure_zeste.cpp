@@ -77,9 +77,10 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         tr("Report GPU/DSP/display-transfer reads of memory the CPU wrote without "
            "GSPGPU_FlushDataCache, and CPU reads of GPU-written memory without an invalidate."));
     hw_memory_layout = MakeCheck(
-        mem, tr("Hardware-like memory layout (applies at boot)"),
-        tr("Place the APPLICATION linear heap at the same physical addresses as a New 3DS "
-           "(above 0x28000000 in 178 MB mode) and report 124 MB for .3dsx files."));
+        mem, tr("Homebrew Launcher memory size for .3dsx (applies at boot)"),
+        tr(".3dsx files get the 124 MB APPLICATION region they get under the Homebrew Launcher "
+           "on a New 3DS (Azahar gives them 96 MB), and draws whose vertex or index buffers the "
+           "GPU cannot reach are reported and skipped."));
     root->addWidget(mem_group);
 
     auto* sched_group = new QGroupBox(tr("Scheduling (race exposure)"));

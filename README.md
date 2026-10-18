@@ -15,7 +15,7 @@ When enabled (everything is off by default), it can:
 - warn about GPU stuff the real PICA200 doesn't like (NaN vertices, values outside its 24-bit
   floats, broken textures, buffers it can't reach)
 - warn when the CPU cache wasn't flushed before the GPU or DSP reads something
-- use a memory layout closer to the real 178 MB mode
+- give `.3dsx` files the 124 MB they get under the Homebrew Launcher
 - shake up thread scheduling to make races show up (with a seed, so they can be replayed)
 - warn about the `std::filesystem::remove_all` pattern, which hangs on hardware
 - run with no window (`--headless`) and be driven by a script or over RPC: inputs,
