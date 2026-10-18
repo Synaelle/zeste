@@ -19,7 +19,7 @@ When enabled (everything is off by default), it can:
 - warn about the `std::filesystem::remove_all` pattern, which hangs on hardware
 - run with no window (`--headless`) and be driven by a script or over RPC: inputs,
   screenshots, memory dumps, GPU command dumps with the vertices of chosen draws,
-  HOME / sleep / close
+  HOME / sleep / close, and text for the game's on-screen keyboard (`keyboard <text>`)
 - boot a `.cia` straight from the command line
 
 The rule is to only add what's known about the real console. Checks that rested on guessed

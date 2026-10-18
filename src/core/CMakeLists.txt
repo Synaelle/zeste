@@ -48,6 +48,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     zeste_system_events.cpp
     zeste_system_events.h
     zeste_fs.cpp
+    zeste_keyboard.cpp
+    zeste_keyboard.h
     zeste_fs.h
     zeste_core.h
     core_timing.cpp

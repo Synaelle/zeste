@@ -30,6 +30,7 @@
 #ifdef _WIN32
 #include <shlobj.h>
 #include <windows.h>
+#include <QAbstractNativeEventFilter>
 #else
 #include <getopt.h>
 #endif
@@ -119,6 +120,7 @@
 #include "core/system_titles.h"
 #include "audio_core/sink_details.h"
 #include "core/zeste_automation.h"
+#include "core/zeste_keyboard.h"
 #include "core/zeste_core.h"
 #include "common/zeste_run.h"
 #include "input_common/main.h"
@@ -271,6 +273,16 @@ static int GetMajorVersion(const std::string& version) {
 }
 #endif
 
+/// Zeste headless: the widget behaves as shown (GL contexts, layouts, screenshots) but never
+/// reaches the screen, and never takes the focus or the foreground (an invisible window in the
+/// foreground made the taskbar appear over full-screen applications).
+static void MakeHeadless(QWidget* widget) {
+    widget->setAttribute(Qt::WA_DontShowOnScreen);
+    widget->setAttribute(Qt::WA_ShowWithoutActivating);
+    widget->setWindowFlag(Qt::WindowDoesNotAcceptFocus);
+    widget->setFocusPolicy(Qt::NoFocus);
+}
+
 GMainWindow::GMainWindow(Core::System& system_)
     : ui{std::make_unique<Ui::MainWindow>()}, system{system_}, movie{system.Movie()},
       user_data_migrator{this}, config{std::make_unique<QtConfig>()}, emu_thread{nullptr} {
@@ -289,10 +301,10 @@ GMainWindow::GMainWindow(Core::System& system_)
 
     if (headless_mode) {
         // Must be set before anything shows the window (the constructor boots the game).
-        setAttribute(Qt::WA_DontShowOnScreen);
+        MakeHeadless(this);
+    } else {
+        Debugger::ToggleConsole();
     }
-
-    Debugger::ToggleConsole();
 
     QStringList args = QApplication::arguments();
     QString game_path;
@@ -716,8 +728,8 @@ void GMainWindow::InitializeWidgets() {
     secondary_window->setParent(nullptr);
     if (headless_mode) {
         // Widgets behave as shown (GL contexts, layouts, screenshots) but never reach the screen.
-        render_window->setAttribute(Qt::WA_DontShowOnScreen);
-        secondary_window->setAttribute(Qt::WA_DontShowOnScreen);
+        MakeHeadless(render_window);
+        MakeHeadless(secondary_window);
     }
 
 #ifndef ENABLE_FFMPEG
@@ -737,8 +749,10 @@ void GMainWindow::InitializeWidgets() {
         loading_screen->Clear();
         if (emulation_running) {
             render_window->show();
-            render_window->setFocus();
-            render_window->activateWindow();
+            if (!headless_mode) {
+                render_window->setFocus();
+                render_window->activateWindow();
+            }
         }
     });
 
@@ -3089,6 +3103,10 @@ void GMainWindow::UpdateSecondaryWindowVisibility() {
         secondary_window->hide();
     }
     // make sure focus is on primary window whenever this changes
+    if (headless_mode) {
+        // Zeste: never activate an invisible window (it took the foreground from full-screen apps).
+        return;
+    }
     if (UISettings::values.single_window_mode.GetValue()) {
         QApplication::setActiveWindow(this);
     } else {
@@ -4937,6 +4955,43 @@ void GMainWindow::SetCustomWindowsScrollbar() {
 }
 #endif
 
+#ifdef _WIN32
+/// Zeste headless (Windows): no Zeste window ever takes the foreground. A process launched by the
+/// foreground application may take the foreground once, and Windows used it to activate one of
+/// the invisible windows: a full-screen application behind lost the foreground and the taskbar
+/// appeared over it. Every top-level window gets WS_EX_NOACTIVATE, and if the process is
+/// activated anyway, the foreground goes back to the window that had it at start-up.
+class HeadlessNoActivateFilter final : public QAbstractNativeEventFilter {
+public:
+    explicit HeadlessNoActivateFilter(HWND previous) : previous_foreground{previous} {}
+
+    bool nativeEventFilter(const QByteArray&, void* message, qintptr* result) override {
+        const MSG* msg = static_cast<const MSG*>(message);
+        if (!msg->hwnd) {
+            return false;
+        }
+        if (GetAncestor(msg->hwnd, GA_ROOT) == msg->hwnd) {
+            const LONG_PTR ex_style = GetWindowLongPtrW(msg->hwnd, GWL_EXSTYLE);
+            if (!(ex_style & WS_EX_NOACTIVATE)) {
+                SetWindowLongPtrW(msg->hwnd, GWL_EXSTYLE, ex_style | WS_EX_NOACTIVATE);
+            }
+        }
+        if (msg->message == WM_MOUSEACTIVATE) {
+            *result = MA_NOACTIVATE;
+            return true;
+        }
+        if (msg->message == WM_ACTIVATEAPP && msg->wParam && previous_foreground &&
+            IsWindow(previous_foreground)) {
+            SetForegroundWindow(previous_foreground);
+        }
+        return false;
+    }
+
+private:
+    HWND previous_foreground;
+};
+#endif
+
 int LaunchQtFrontend(int argc, char* argv[]) {
 #ifdef __APPLE__
     // Ensure that the linker doesn't optimize qt_swizzle.mm out of existence.
@@ -4999,6 +5054,13 @@ int LaunchQtFrontend(int argc, char* argv[]) {
         }
     }
 
+#ifdef _WIN32
+    // Before any window exists: the window that has the foreground now keeps it.
+    static HeadlessNoActivateFilter no_activate_filter{GetForegroundWindow()};
+    if (GMainWindow::headless_mode) {
+        app.installNativeEventFilter(&no_activate_filter);
+    }
+#endif
     GMainWindow main_window(system);
     const auto finish_run = [](int code) {
         Zeste::Run::Note("exit code", std::to_string(code));
@@ -5020,8 +5082,14 @@ int LaunchQtFrontend(int argc, char* argv[]) {
     // Register frontend applets
     Frontend::RegisterDefaultApplets(system);
 
-    system.RegisterMiiSelector(std::make_shared<QtMiiSelector>(main_window));
-    system.RegisterSoftwareKeyboard(std::make_shared<QtKeyboard>(main_window));
+    if (GMainWindow::headless_mode) {
+        // No dialogs: the keyboard is answered by script/RPC commands ("keyboard <text>"), the Mii
+        // selector picks the default Mii (Azahar's default applet, registered above).
+        Zeste::Keyboard::RegisterHeadless(system);
+    } else {
+        system.RegisterMiiSelector(std::make_shared<QtMiiSelector>(main_window));
+        system.RegisterSoftwareKeyboard(std::make_shared<QtKeyboard>(main_window));
+    }
 
 #ifdef __APPLE__
     // Register microphone permission check.
@@ -5029,7 +5097,7 @@ int LaunchQtFrontend(int argc, char* argv[]) {
 #endif
 
     if (GMainWindow::headless_mode) {
-        main_window.setAttribute(Qt::WA_DontShowOnScreen);
+        MakeHeadless(&main_window);
     }
     main_window.show();
 

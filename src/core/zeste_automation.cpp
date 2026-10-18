@@ -19,6 +19,7 @@
 #include "core/hle/kernel/process.h"
 #include "core/memory.h"
 #include "core/zeste_automation.h"
+#include "core/zeste_keyboard.h"
 #include "core/zeste_core.h"
 #include "core/zeste_system_events.h"
 #include "video_core/gpu.h"
@@ -129,7 +130,8 @@ std::string ValidateCommand(const std::vector<std::string>& args) {
         {"press", 2},     {"hold", 2},      {"release", 2},   {"touch", 3},   {"stick", 3},
         {"lcd", 3},       {"screenshot", 2}, {"dump-mem", 4}, {"dump-phys", 4}, {"dump-vram", 2},
         {"dump-cmdlist", 2}, {"home", 1},   {"sleep", 1},     {"close", 1},   {"rosalina", 1},
-        {"report", 1},    {"log", 1},       {"quit", 1},
+        {"report", 1},    {"log", 1},       {"quit", 1},      {"keyboard", 1},
+        {"keyboard-cancel", 1},
     };
     if (args.empty()) {
         return "empty command";
@@ -256,6 +258,14 @@ void Execute(Core::System& system, const Command& command) {
     } else if (verb == "report") {
         Zeste::WriteReport(args.size() > 1 ? args[1] : Zeste::DefaultReportBasePath(),
                            "on request");
+    } else if (verb == "keyboard") {
+        std::string text;
+        for (std::size_t i = 1; i < args.size(); ++i) {
+            text += (i > 1 ? " " : "") + args[i];
+        }
+        Keyboard::Type(text);
+    } else if (verb == "keyboard-cancel") {
+        Keyboard::Cancel();
     } else if (verb == "log") {
         std::string text;
         for (std::size_t i = 1; i < args.size(); ++i) {

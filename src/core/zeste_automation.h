@@ -29,6 +29,9 @@
 //   close                          HOME Menu "close": APT OrderToClose notification
 //   rosalina [ms=3000]             Rosalina combo (L+Down+Select) then pause the process
 //   report [path]                  write the inaccuracy report now
+//   keyboard [text]                headless: answer the game's software keyboard with <text>
+//                                  and OK (queued if the game has not asked yet)
+//   keyboard-cancel                headless: press Cancel on the software keyboard
 //   log <text>                     write a line to the log
 //   quit [exit code=0]             stop emulation and exit (headless) / stop (windowed)
 
