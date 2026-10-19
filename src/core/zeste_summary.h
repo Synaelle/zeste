@@ -19,6 +19,12 @@ void SetElfPath(const std::string& path);
 /// "function+0x12" for an address, or "" when there is no ELF or no symbol covers it.
 std::string Symbolize(u32 address);
 
+/// The name of the function containing the address, or "" (no ELF, or no symbol covers it).
+std::string FunctionName(u32 address);
+
+/// True when an ELF with symbols was given (--elf) and loaded.
+bool HasElf();
+
 /// Remembers the emulated frame count at the end of emulation (the system is gone afterwards).
 void SetFramesRun(u64 frames);
 

@@ -510,6 +510,16 @@ GMainWindow::GMainWindow(Core::System& system_)
             QtConfig::zeste_command_line_override = true;
             continue;
         }
+        if (args[i] == QStringLiteral("--profile")) {
+            // Sampling CPU profiler for the whole run, report in the run folder (profile.md).
+            // An optional number sets the interval in microseconds of emulated time.
+            std::string interval;
+            if (i + 1 < args.size() && args[i + 1].toUInt() > 0) {
+                interval = " " + args[++i].toStdString();
+            }
+            Zeste::Automation::LoadScriptText("@1 profile-start" + interval, "--profile");
+            continue;
+        }
         if (args[i] == QStringLiteral("--elf") && i + 1 < args.size()) {
             Zeste::Summary::SetElfPath(args[++i].toStdString());
             continue;

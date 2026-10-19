@@ -65,6 +65,7 @@
 #include "video_core/renderer_base.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_core.h"
+#include "core/zeste_profiler.h"
 #include "core/zeste_sched.h"
 
 namespace Core {
@@ -1023,6 +1024,8 @@ void System::serialize(Archive& ar, const unsigned int file_version) {
 
         [[maybe_unused]] const System::ResultStatus result =
             Init(*m_emu_window, m_secondary_window, mem_mode, num_cores);
+        // Zeste: the restored timing queue may hold profiler events; give them their callback.
+        Zeste::Profiler::RegisterEvent(*this);
     }
 
     // Flush on save, don't flush on load

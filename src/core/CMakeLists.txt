@@ -51,6 +51,8 @@ add_library(citra_core STATIC EXCLUDE_FROM_ALL
     zeste_system_events.h
     zeste_fs.cpp
     zeste_heap.cpp
+    zeste_profiler.cpp
+    zeste_profiler.h
     zeste_heap.h
     zeste_keyboard.cpp
     zeste_keyboard.h

@@ -14,6 +14,7 @@
 #include "common/logging/log.h"
 #include "common/string_util.h"
 #include "common/zeste_report.h"
+#include "common/zeste_run.h"
 #include "core/core.h"
 #include "core/frontend/image_interface.h"
 #include "core/hle/kernel/kernel.h"
@@ -23,6 +24,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_heap.h"
 #include "core/zeste_keyboard.h"
+#include "core/zeste_profiler.h"
 #include "core/zeste_core.h"
 #include "core/zeste_system_events.h"
 #include "video_core/gpu.h"
@@ -195,7 +197,7 @@ std::string ValidateCommand(const std::vector<std::string>& args) {
         {"dump-cmdlist", 2}, {"home", 1},   {"sleep", 1},     {"close", 1},   {"rosalina", 1},
         {"report", 1},    {"log", 1},       {"quit", 1},      {"keyboard", 1},
         {"keyboard-cancel", 1}, {"wait-log", 2}, {"save-state", 2}, {"load-state", 2},
-        {"speed", 2},     {"heap-report", 2},
+        {"speed", 2},     {"heap-report", 2}, {"profile-start", 1}, {"profile-stop", 1},
     };
     if (args.empty()) {
         return "empty command";
@@ -378,6 +380,20 @@ void Execute(Core::System& system, const Command& command) {
         LOG_INFO(Zeste, "automation: speed {}", value);
     } else if (verb == "heap-report") {
         Heap::WriteReport(system, HostPath(args[1]));
+    } else if (verb == "profile-start") {
+        Profiler::Start(system, args.size() > 1
+                                    ? static_cast<u32>(ParseNumber(args[1], Profiler::DefaultIntervalUs))
+                                    : Profiler::DefaultIntervalUs);
+    } else if (verb == "profile-stop") {
+        // Default: profile-<frame> in the run folder. A given path may end in .md.
+        std::string base = args.size() > 1 ? HostPath(args[1])
+                                           : Run::Folder() + fmt::format("profile-{}", frame);
+        if (base.ends_with(".md")) {
+            base.resize(base.size() - 3);
+        }
+        const std::string written = Profiler::Stop(system, base);
+        LOG_INFO(Zeste, "automation: profile-stop at frame {}: {}", frame,
+                 written.empty() ? "no profile was running" : written);
     }
 }
 
@@ -530,6 +546,7 @@ std::string QueueCommand(const std::string& line) {
 }
 
 void OnVBlank(Core::System& system) {
+    Profiler::OnVBlank(system);
     auto& s = GetState();
     if (!s.active) {
         return;

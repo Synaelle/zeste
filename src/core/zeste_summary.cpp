@@ -12,6 +12,7 @@
 #include "common/zeste_report.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_exceptions.h"
+#include "core/zeste_profiler.h"
 #include "core/zeste_summary.h"
 
 namespace Zeste::Summary {
@@ -39,40 +40,53 @@ T ReadAt(const std::string& data, std::size_t offset) {
     return value;
 }
 
+/// Reads `size` bytes at `offset` of an open file ("" on failure).
+std::string ReadRange(FileUtil::IOFile& file, u64 offset, std::size_t size) {
+    std::string out(size, '\0');
+    if (!file.Seek(static_cast<s64>(offset), SEEK_SET) ||
+        file.ReadBytes(out.data(), size) != size) {
+        return {};
+    }
+    return out;
+}
+
 /// Loads the function symbols of a 32-bit little-endian ARM ELF (.symtab + its string table).
+/// Only those sections are read: a game's ELF with debug info can be over a gigabyte.
 void LoadElf() {
     g_elf_loaded = true;
-    std::string data;
-    if (g_elf_path.empty() || FileUtil::ReadFileToString(true, g_elf_path, data) < 52 ||
-        data.compare(0, 4, "\x7F" "ELF") != 0 || data[4] != 1) {
+    if (g_elf_path.empty()) {
         return;
     }
-    const u32 shoff = ReadAt<u32>(data, 0x20);
-    const u16 shentsize = ReadAt<u16>(data, 0x2E);
-    const u16 shnum = ReadAt<u16>(data, 0x30);
-    for (u16 i = 0; i < shnum; ++i) {
-        const std::size_t sh = shoff + static_cast<std::size_t>(i) * shentsize;
-        if (ReadAt<u32>(data, sh + 4) != 2) { // SHT_SYMTAB
+    FileUtil::IOFile file(g_elf_path, "rb");
+    const std::string header = file.IsOpen() ? ReadRange(file, 0, 52) : std::string{};
+    if (header.size() < 52 || header.compare(0, 4, "\x7F" "ELF") != 0 || header[4] != 1) {
+        return;
+    }
+    const u32 shoff = ReadAt<u32>(header, 0x20);
+    const u16 shentsize = ReadAt<u16>(header, 0x2E);
+    const u16 shnum = ReadAt<u16>(header, 0x30);
+    const std::string sections =
+        ReadRange(file, shoff, static_cast<std::size_t>(shnum) * shentsize);
+    for (u16 i = 0; i < shnum && !sections.empty(); ++i) {
+        const std::size_t sh = static_cast<std::size_t>(i) * shentsize;
+        if (ReadAt<u32>(sections, sh + 4) != 2) { // SHT_SYMTAB
             continue;
         }
-        const u32 offset = ReadAt<u32>(data, sh + 0x10);
-        const u32 size = ReadAt<u32>(data, sh + 0x14);
-        const u32 link = ReadAt<u32>(data, sh + 0x18);
-        const std::size_t str_sh = shoff + static_cast<std::size_t>(link) * shentsize;
-        const u32 str_offset = ReadAt<u32>(data, str_sh + 0x10);
-        for (u32 at = offset; at + 16 <= offset + size; at += 16) {
-            const u32 name = ReadAt<u32>(data, at);
-            const u32 value = ReadAt<u32>(data, at + 4);
-            const u32 sym_size = ReadAt<u32>(data, at + 8);
-            const u8 info = ReadAt<u8>(data, at + 12);
-            if ((info & 0xF) != 2 || value == 0) { // STT_FUNC
+        const u32 link = ReadAt<u32>(sections, sh + 0x18);
+        const std::size_t str_sh = static_cast<std::size_t>(link) * shentsize;
+        const std::string symtab =
+            ReadRange(file, ReadAt<u32>(sections, sh + 0x10), ReadAt<u32>(sections, sh + 0x14));
+        const std::string strtab = ReadRange(file, ReadAt<u32>(sections, str_sh + 0x10),
+                                             ReadAt<u32>(sections, str_sh + 0x14));
+        for (std::size_t at = 0; at + 16 <= symtab.size(); at += 16) {
+            const u32 name = ReadAt<u32>(symtab, at);
+            const u32 value = ReadAt<u32>(symtab, at + 4);
+            const u32 sym_size = ReadAt<u32>(symtab, at + 8);
+            const u8 info = ReadAt<u8>(symtab, at + 12);
+            if ((info & 0xF) != 2 || value == 0 || name >= strtab.size()) { // STT_FUNC
                 continue;
             }
-            const std::size_t name_at = str_offset + name;
-            if (name_at >= data.size()) {
-                continue;
-            }
-            g_symbols.push_back({value & ~1u, sym_size, std::string(data.c_str() + name_at)});
+            g_symbols.push_back({value & ~1u, sym_size, std::string(strtab.c_str() + name)});
         }
     }
     std::sort(g_symbols.begin(), g_symbols.end(),
@@ -137,6 +151,19 @@ std::string Symbolize(u32 address) {
         return {};
     }
     return a == it->start ? it->name : fmt::format("{}+0x{:X}", it->name, a - it->start);
+}
+
+std::string FunctionName(u32 address) {
+    const std::string name = Symbolize(address);
+    return name.substr(0, name.find("+0x"));
+}
+
+bool HasElf() {
+    std::scoped_lock lock{g_mutex};
+    if (!g_elf_loaded) {
+        LoadElf();
+    }
+    return !g_symbols.empty();
 }
 
 void SetFramesRun(u64 frames) {
@@ -215,6 +242,15 @@ void Write(const std::string& folder, int exit_code, const std::string& reason) 
         out += line + "\n";
     }
     out += "```\n\n";
+
+    const auto profiles = Profiler::Reports();
+    if (!profiles.empty()) {
+        out += "## CPU profiles\n\n";
+        for (const auto& profile : profiles) {
+            out += "- " + profile + "\n";
+        }
+        out += "\n";
+    }
 
     const auto shots = Automation::Screenshots();
     out += "## Screenshots\n\n";

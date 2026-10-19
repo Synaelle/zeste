@@ -16,6 +16,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_cache.h"
 #include "core/zeste_core.h"
+#include "core/zeste_profiler.h"
 #include "core/zeste_summary.h"
 #include "core/zeste_sched.h"
 #include "core/zeste_system_events.h"
@@ -138,6 +139,7 @@ void OnSystemShutdown(Core::System& system) {
     }
     g_installed = false;
     Summary::SetFramesRun(CurrentFrame(system));
+    Profiler::OnShutdown(system);
     Automation::Reset();
     SetContextProvider({});
     SetBreakHandler({});

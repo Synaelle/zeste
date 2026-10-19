@@ -47,6 +47,8 @@ constexpr char help_string[] =
     "    --load-state [file]     Load an emulator save state once the game has booted\n"
     "    --speed [n]             Emulation speed limit in percent, or unlimited\n"
     "    --elf [file]            The game's ELF: function names in the run summary\n"
+    "    --profile [us]          Sampling CPU profiler for the whole run (default: every 100 us\n"
+    "                              of emulated time), report in the run folder\n"
     "    --renderer [api]        software, opengl or vulkan for this run\n"
     "    --boot-cia [path]       Install a CIA and boot the installed title\n"
     "    --rpc                   Enable the RPC server (UDP 45987, see dist/scripting/ZesteRPC.py)\n"
