@@ -267,13 +267,8 @@ public:
         };
         // clang-format off
         static const std::map<QString, CompatStatus> status_data = {
-        {QStringLiteral("0"),  {QStringLiteral("#5c93ed"), QT_TR_NOOP("Perfect"),    QT_TR_NOOP("App functions flawlessly with no audio or graphical glitches, all tested functionality works as intended without\nany workarounds needed.")}},
-        {QStringLiteral("1"),  {QStringLiteral("#47d35c"), QT_TR_NOOP("Great"),      QT_TR_NOOP("App functions with minor graphical or audio glitches and is playable from start to finish. May require some\nworkarounds.")}},
-        {QStringLiteral("2"),  {QStringLiteral("#94b242"), QT_TR_NOOP("Okay"),       QT_TR_NOOP("App functions with major graphical or audio glitches, but app is playable from start to finish with\nworkarounds.")}},
-        {QStringLiteral("3"),  {QStringLiteral("#f2d624"), QT_TR_NOOP("Bad"),        QT_TR_NOOP("App functions, but with major graphical or audio glitches. Unable to progress in specific areas due to glitches\neven with workarounds.")}},
-        {QStringLiteral("4"),  {QStringLiteral("#ff0000"), QT_TR_NOOP("Intro/Menu"), QT_TR_NOOP("App is completely unplayable due to major graphical or audio glitches. Unable to progress past the Start\nScreen.")}},
-        {QStringLiteral("5"),  {QStringLiteral("#828282"), QT_TR_NOOP("Won't Boot"), QT_TR_NOOP("The app crashes when attempting to startup.")}},
-        {QStringLiteral("99"), {QStringLiteral("#000000"), QT_TR_NOOP("Not Tested"), QT_TR_NOOP("The app has not yet been tested.")}}};
+        {QStringLiteral("0"),  {QStringLiteral("#47d35c"), QT_TR_NOOP("Playable"), QT_TR_NOOP("Tested in Zeste: the app runs and is playable.")}},
+        {QStringLiteral("99"), {QStringLiteral("#828282"), QT_TR_NOOP("Untested"), QT_TR_NOOP("The app has not been tested in Zeste.")}}};
         // clang-format on
 
         auto iterator = status_data.find(compatibility);

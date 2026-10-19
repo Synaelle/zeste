@@ -997,46 +997,13 @@ void GameList::AddFavoritesPopup(QMenu& context_menu) {
 }
 
 void GameList::LoadCompatibilityList() {
-    QFile compat_list{QStringLiteral(":compatibility_list/compatibility_list.json")};
-
-    if (!compat_list.open(QFile::ReadOnly | QFile::Text)) {
-        LOG_ERROR(Frontend, "Unable to open application compatibility list");
-        return;
-    }
-
-    if (compat_list.size() == 0) {
-        LOG_WARNING(Frontend, "Application compatibility list is empty");
-        return;
-    }
-
-    const QByteArray content = compat_list.readAll();
-    if (content.isEmpty()) {
-        LOG_ERROR(Frontend, "Unable to completely read application compatibility list");
-        return;
-    }
-
-    const QJsonDocument json = QJsonDocument::fromJson(content);
-    const QJsonArray arr = json.array();
-
-    for (const QJsonValue& value : arr) {
-        const QJsonObject game = value.toObject();
-        const QString compatibility_key = QStringLiteral("compatibility");
-
-        if (!game.contains(compatibility_key) || !game[compatibility_key].isDouble()) {
-            continue;
-        }
-
-        const int compatibility = game[compatibility_key].toInt();
-        const QString directory = game[QStringLiteral("directory")].toString();
-        const QJsonArray ids = game[QStringLiteral("releases")].toArray();
-
-        for (const QJsonValue& id_ref : ids) {
-            const QJsonObject id_object = id_ref.toObject();
-            const QString id = id_object[QStringLiteral("id")].toString();
-
-            compatibility_list.emplace(id.toUpper().toStdString(),
-                                       std::make_pair(QString::number(compatibility), directory));
-        }
+    // Zeste: its own list instead of Azahar's (which rates commercial games in Azahar). Only what
+    // was run in Zeste is listed; everything else shows as "Untested".
+    static constexpr std::pair<const char*, const char*> zeste_compatibility[] = {
+        {"000400000F6D3E00", "0"}, // OpenMW 3DS: playable
+    };
+    for (const auto& [id, compatibility] : zeste_compatibility) {
+        compatibility_list.emplace(id, std::make_pair(QString::fromLatin1(compatibility), QString{}));
     }
 }
 
