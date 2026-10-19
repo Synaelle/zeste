@@ -31,6 +31,10 @@ The rule is to only add what's known about the real console. Checks that rested 
 numbers (GPU/CPU/SD timing models, a fixed-point "wrap" model for big triangles) were removed
 once that became clear; things get measured on the console before Zeste models them.
 
+**Zeste is for testing homebrew apps, not for playing commercial games.** Commercial games
+aren't supported: they may run since Azahar's code is all still there, but the checks are made
+for homebrew and nothing is tested with them.
+
 **Only the New 3DS is supported**: every check and measurement comes from a New 3DS. I don't have
 an Old 3DS (or 2DS), so Old 3DS behaviour isn't tested and may differ.
 
