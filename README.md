@@ -29,6 +29,7 @@ When enabled (everything is off by default), it can:
   waiting for a line in the game's log, quit after N seconds
 - report the game's malloc heap (free memory, largest block) and write a summary of each run
   (why it ended, the crash with function names when given the `.elf`, the last log lines)
+- profile the CPU: the hottest functions per core and thread, and a flame-graph file
 - boot a `.cia` straight from the command line
 - tell you when a new Zeste release is out, in headless runs too (Help > Check for Updates)
 
