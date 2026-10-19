@@ -44,6 +44,10 @@ whole install is that one folder. Only if that folder can't be written (under Pr
 for example) does Zeste use `%APPDATA%\Zeste` instead. Versions before 0.4.0 used
 `%APPDATA%\Zeste` by default. To keep that data, move its contents into `user`.
 
+Keep the Zeste folder in a short path (under about 100 characters, like `C:\Zeste` or your
+Downloads folder). The emulated SD card has deep folders, and Windows refuses paths longer than
+260 characters, so installing a game fails in a folder buried too deep.
+
 ## Building
 
 Needs Visual Studio 2022 (or the Build Tools) with the C++ workload.
