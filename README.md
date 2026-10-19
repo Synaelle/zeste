@@ -4,10 +4,14 @@
 
 <h1 align="center">Zeste</h1>
 
-Zeste is a fork of [Azahar](https://github.com/azahar-emu/azahar) that I use to test 3DS
-homebrew. Azahar is very forgiving, so things that crash or break on a real New 3DS often
-work fine in it. Zeste tries to catch those cases. It's VERY useful for my 3DS
-ports.
+Zeste is a 3DS emulator for testing homebrew, based on
+[Azahar](https://github.com/azahar-emu/azahar). Azahar runs a lot of code that would crash or
+misbehave on a real console; Zeste adds checks that catch those problems on your PC, before you
+try the app on hardware.
+
+**Homebrew and New 3DS only.** Commercial games aren't supported: with Zeste's options off they
+should run much like in Azahar, but turning the options on may break them. Every check is based
+on a New 3DS; the Old 3DS and 2DS aren't tested and may behave differently.
 
 When enabled (everything is off by default), it can:
 
@@ -26,18 +30,6 @@ When enabled (everything is off by default), it can:
 - report the game's malloc heap (free memory, largest block) and write a summary of each run
   (why it ended, the crash with function names when given the `.elf`, the last log lines)
 - boot a `.cia` straight from the command line
-
-The rule is to only add what's known about the real console. Checks that rested on guessed
-numbers (GPU/CPU/SD timing models, a fixed-point "wrap" model for big triangles) were removed
-once that became clear; things get measured on the console before Zeste models them.
-
-**Zeste is for testing homebrew apps, not for playing commercial games.** Commercial games
-aren't supported. With Zeste's options off they should behave much like in Azahar, since Azahar's
-code is all still there, but the Zeste features are made for homebrew and nothing is tested with
-commercial games: turning them on may break those games.
-
-**Only the New 3DS is supported**: every check and measurement comes from a New 3DS. I don't have
-an Old 3DS (or 2DS), so Old 3DS behaviour isn't tested and may differ.
 
 Settings are under Zeste > Hardware accuracy settings, or `--strict` on the command line
 to turn everything on. `zeste.exe --help` lists the options.
