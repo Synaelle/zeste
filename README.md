@@ -30,6 +30,7 @@ When enabled (everything is off by default), it can:
 - report the game's malloc heap (free memory, largest block) and write a summary of each run
   (why it ended, the crash with function names when given the `.elf`, the last log lines)
 - boot a `.cia` straight from the command line
+- tell you when a new Zeste release is out, in headless runs too (Help > Check for Updates)
 
 Settings are under Zeste > Hardware accuracy settings, or `--strict` on the command line
 to turn everything on. `zeste.exe --help` lists the options.
