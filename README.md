@@ -36,8 +36,13 @@ to turn everything on. `zeste.exe --help` lists the options.
 
 ## Downloads
 
-Zeste supports Windows only. Releases are a zip with `zeste.exe` and its DLLs. Zeste keeps its
-own data in `%APPDATA%\Zeste`, separate from Azahar's.
+Zeste supports Windows only. Releases are a zip with `zeste.exe` and its DLLs.
+
+Zeste is portable. Everything it writes (settings, the emulated SD card and NAND, logs, run
+reports) goes into a `user` folder next to `zeste.exe`, created on the first start, so the
+whole install is that one folder. Only if that folder can't be written (under Program Files,
+for example) does Zeste use `%APPDATA%\Zeste` instead. Versions before 0.4.0 used
+`%APPDATA%\Zeste` by default. To keep that data, move its contents into `user`.
 
 ## Building
 
