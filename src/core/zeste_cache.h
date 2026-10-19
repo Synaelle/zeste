@@ -47,8 +47,8 @@ void OnCpuInvalidate(PAddr addr, u32 size);
 /// may be stale, so these lines are trusted for device reads and checked on CPU reads.
 void OnDeviceWrite(Memory::MemorySystem& memory, PAddr addr, u32 size);
 
-/// A system agent wrote a range outside the application's data cache (kernel zero-fill of new
-/// allocations, service writes such as file reads, DMA). The lines become clean.
+/// The system (kernel or a service) wrote a range outside the application's data cache (kernel
+/// zero-fill of new allocations, service writes such as file reads, DMA). The lines become clean.
 void OnSystemWrite(Memory::MemorySystem& memory, PAddr addr, u32 size);
 
 /// A device reads a range. Reports lines the CPU wrote without a flush. `what` names the reader

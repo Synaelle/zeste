@@ -2,7 +2,7 @@
 # Licensed under GPLv2 or any later version
 # Refer to the license.txt file included.
 #
-# Zeste RPC client for agents and test scripts. Extends AzaharRPC (memory read/write,
+# Zeste RPC client for test scripts. Extends AzaharRPC (memory read/write,
 # screenshots, perf stats) with the Zeste automation commands (core/zeste_automation.h):
 #
 #   rpc = ZesteRPC()
