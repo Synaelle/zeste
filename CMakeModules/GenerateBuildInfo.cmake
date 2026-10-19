@@ -38,6 +38,14 @@ macro(generate_build_info)
         if (DEFINED ENV{CITRA_USE_TAG_AS_VERSION})
             git_describe(GIT_TAG --tags --dirty)
         endif()
+        # Zeste: its version is the latest release tag (v0.4.1). A build at the tag is "0.4.1",
+        # a later one "0.4.1-3-g3159690". The update check compares the numbers.
+        execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --match "v[0-9]*"
+                        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                        OUTPUT_VARIABLE ZESTE_VERSION
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_QUIET)
+        string(REGEX REPLACE "^v" "" ZESTE_VERSION "${ZESTE_VERSION}")
     else()
         # self-packed archive?
         set(GIT_REV "UNKNOWN")
@@ -45,6 +53,9 @@ macro(generate_build_info)
         set(GIT_BRANCH "UNKNOWN")
     endif()
     string(SUBSTRING "${GIT_REV}" 0 7 GIT_SHORT_REV)
+    if (NOT ZESTE_VERSION)
+        set(ZESTE_VERSION "unknown")
+    endif()
 
     # Set build version
     set(REPO_NAME "")

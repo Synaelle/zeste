@@ -193,6 +193,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     util/spinbox.cpp
     util/spinbox.h
     util/util.cpp
+    zeste_update.cpp
+    zeste_update.h
     util/util.h
 )
 
@@ -305,7 +307,7 @@ create_target_directory_groups(citra_qt)
 
 target_link_libraries(citra_qt PRIVATE audio_core citra_common citra_core input_common network video_core)
 target_link_libraries(citra_qt PUBLIC Boost::boost Qt6::Widgets)
-target_link_libraries(citra_qt PRIVATE nihstro-headers Qt6::Multimedia Qt6::Concurrent)
+target_link_libraries(citra_qt PRIVATE nihstro-headers Qt6::Multimedia Qt6::Concurrent Qt6::Network)
 target_link_libraries(citra_qt PRIVATE ${PLATFORM_LIBRARIES} Threads::Threads)
 
 if (MINGW)

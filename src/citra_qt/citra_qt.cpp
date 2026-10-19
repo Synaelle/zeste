@@ -88,6 +88,7 @@
 #include "citra_qt/util/clickable_label.h"
 #include "citra_qt/util/graphics_device_info.h"
 #include "citra_qt/util/util.h"
+#include "citra_qt/zeste_update.h"
 #include "common/arch.h"
 #include "common/common_paths.h"
 #include "common/dynamic_library.h"
@@ -706,6 +707,11 @@ GMainWindow::GMainWindow(Core::System& system_)
                "`open ./Azahar.app`"));
     }
 #endif
+
+    // Zeste: compares with the latest release on GitHub (at most every 6 hours, cached).
+    if (UISettings::values.check_for_update_on_start) {
+        ZesteCheckForUpdates(false);
+    }
 
 #ifdef ENABLE_QT_UPDATE_CHECKER
     if (UISettings::values.check_for_update_on_start) {
@@ -1387,10 +1393,6 @@ void GMainWindow::ConnectMenuEvents() {
     connect_menu(ui->action_Pause, &GMainWindow::OnPauseContinueGame);
     connect_menu(ui->action_Stop, &GMainWindow::OnStopGame);
     connect_menu(ui->action_Restart, [this] { BootGame(QString(game_path)); });
-    connect_menu(ui->action_Report_Compatibility, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral(
-            "https://github.com/azahar-emu/compatibility-list/blob/master/CONTRIBUTING.md")));
-    });
     connect_menu(ui->action_Configure, &GMainWindow::OnConfigure, QAction::PreferencesRole);
     connect_menu(ui->action_Configure_Current_Game, &GMainWindow::OnConfigurePerGame);
 
@@ -1480,9 +1482,7 @@ void GMainWindow::ConnectMenuEvents() {
         QString path = QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::LogDir));
         QDesktopServices::openUrl(QUrl::fromLocalFile(path));
     });
-    connect_menu(ui->action_FAQ, []() {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("https://azahar-emu.org/pages/faq/")));
-    });
+    connect_menu(ui->action_Check_For_Updates, [this]() { ZesteCheckForUpdates(true); });
     connect_menu(ui->action_About, &GMainWindow::OnMenuAboutCitra, QAction::AboutRole);
 }
 
@@ -1494,7 +1494,6 @@ void GMainWindow::UpdateMenuState() {
         ui->action_Stop,
         ui->action_Restart,
         ui->action_Configure_Current_Game,
-        ui->action_Report_Compatibility,
         ui->action_Load_Amiibo,
         ui->action_Remove_Amiibo,
         ui->action_Pause,
@@ -4795,6 +4794,38 @@ void GMainWindow::OnEmulatorUpdateAvailable() {
     }
 }
 #endif
+
+void GMainWindow::ZesteCheckForUpdates(bool asked) {
+    Zeste::Update::Check(this, asked, [this, asked](const Zeste::Update::Result& result) {
+        const QString current = QString::fromUtf8(Common::g_zeste_version);
+        if (headless_mode) {
+            if (result.newer) {
+                std::cout << "Zeste update available: " << result.latest.toStdString()
+                          << " (this is " << current.toStdString()
+                          << "): " << result.url.toStdString() << std::endl;
+            }
+            return;
+        }
+        if (result.newer) {
+            auto* box = new QMessageBox(QMessageBox::Information, tr("Update Available"),
+                                        tr("Zeste %1 is available (this is %2).\n"
+                                           "Open the download page?")
+                                            .arg(result.latest, current),
+                                        QMessageBox::Yes | QMessageBox::No, this);
+            box->setAttribute(Qt::WA_DeleteOnClose);
+            connect(box, &QMessageBox::accepted, this, [url = result.url] {
+                QDesktopServices::openUrl(QUrl(url));
+            });
+            box->open();
+        } else if (asked) {
+            QMessageBox::information(
+                this, tr("Check for Updates"),
+                result.error.isEmpty()
+                    ? tr("Zeste %1 is the latest version.").arg(current)
+                    : tr("Could not check for updates: %1").arg(result.error));
+        }
+    });
+}
 
 void GMainWindow::OnSwitchDiskResources(VideoCore::LoadCallbackStage stage, std::size_t value,
                                         std::size_t total, const std::string& object) {

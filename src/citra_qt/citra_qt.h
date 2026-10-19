@@ -329,6 +329,9 @@ private slots:
     void OnDecreaseVolume();
     void OnIncreaseVolume();
     void OnMute();
+    /// Zeste: update check against the latest GitHub release. `asked`: from the Help menu (no
+    /// cache, says when it is up to date or the check failed).
+    void ZesteCheckForUpdates(bool asked);
 #ifdef ENABLE_QT_UPDATE_CHECKER
     void OnEmulatorUpdateAvailable();
 #endif

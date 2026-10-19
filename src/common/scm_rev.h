@@ -13,6 +13,8 @@ extern const char g_build_name[];
 extern const char g_build_date[];
 extern const char g_build_fullname[];
 extern const char g_build_version[];
+/// Zeste release this build comes from ("0.4.1", or "0.4.1-3-g3159690" after it).
+extern const char g_zeste_version[];
 extern const char g_build_variant[];
 extern const char g_shader_cache_version[];
 
