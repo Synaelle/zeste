@@ -32,8 +32,9 @@ numbers (GPU/CPU/SD timing models, a fixed-point "wrap" model for big triangles)
 once that became clear; things get measured on the console before Zeste models them.
 
 **Zeste is for testing homebrew apps, not for playing commercial games.** Commercial games
-aren't supported: they may run since Azahar's code is all still there, but the checks are made
-for homebrew and nothing is tested with them.
+aren't supported. With Zeste's options off they should behave much like in Azahar, since Azahar's
+code is all still there, but the Zeste features are made for homebrew and nothing is tested with
+commercial games: turning them on may break those games.
 
 **Only the New 3DS is supported**: every check and measurement comes from a New 3DS. I don't have
 an Old 3DS (or 2DS), so Old 3DS behaviour isn't tested and may differ.
