@@ -946,7 +946,10 @@ void SetUserPath(const std::string& path) {
         std::string& legacy_citra_user_path = g_paths[UserPath::LegacyCitraUserDir];
         std::string& legacy_lime3ds_user_path = g_paths[UserPath::LegacyLime3DSUserDir];
 
-        if (!FileUtil::IsDirectory(user_path)) {
+        // Zeste: portable by default. Everything (config, NAND, SD card, logs and run folders)
+        // lives in the "user" folder next to zeste.exe, which is created on the first start.
+        // %APPDATA%\Zeste is only used when the exe's folder is not writable.
+        if (!FileUtil::IsDirectory(user_path) && !FileUtil::CreateDir(user_path)) {
             user_path = AppDataRoamingDirectory() + DIR_SEP EMU_DATA_DIR DIR_SEP;
             legacy_citra_user_path =
                 AppDataRoamingDirectory() + DIR_SEP LEGACY_CITRA_DATA_DIR DIR_SEP;
