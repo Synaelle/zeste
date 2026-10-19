@@ -476,6 +476,14 @@ void SOC_U::CloseAndDeleteAllSockets(s32 process_id) {
     });
 }
 
+void SOC_U::CloseAllSocketsForShutdown() {
+    for (auto& [id, holder] : created_sockets) {
+        closesocket(holder.socket_fd);
+        holder.socket_fd = static_cast<SocketHolder::SOCKET>(-1);
+        holder.shutdown_rd = true;
+    }
+}
+
 static u32 SendRecvFlagsToPlatform(u32 flags) {
     u32 ret = 0;
     if (flags & 1) {

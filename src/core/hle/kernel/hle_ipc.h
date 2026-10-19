@@ -305,13 +305,15 @@ public:
 
         if (!Settings::values.deterministic_async_operations && really_async) {
             kernel.ReportAsyncState(true);
+            kernel.BeginAsyncSection();
             this->SleepClientThread(
                 "RunAsync", std::chrono::nanoseconds(-1),
                 std::make_shared<AsyncWakeUpCallback<ResultFunctor>>(
                     kernel, result_function,
-                    std::move(std::async(std::launch::async, [this, async_section] {
+                    std::move(std::async(std::launch::async, [this, async_section, &k = kernel] {
                         s64 sleep_for = async_section(*this);
                         this->thread->WakeAfterDelay(sleep_for, true);
+                        k.EndAsyncSection();
                     }))));
 
         } else {
@@ -349,9 +351,11 @@ public:
             kernel.ReportAsyncState(true);
 
             // We use packaged_task so we can retrieve a std::future to pass to AsyncWakeUpCallback
-            auto task = std::make_shared<std::packaged_task<void()>>([this, async_section] {
+            kernel.BeginAsyncSection();
+            auto task = std::make_shared<std::packaged_task<void()>>([this, async_section, &k = kernel] {
                 s64 sleep_for = async_section(*this);
                 this->thread->WakeAfterDelay(sleep_for, true);
+                k.EndAsyncSection();
             });
 
             auto future = task->get_future();

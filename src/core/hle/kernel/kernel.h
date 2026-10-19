@@ -10,6 +10,8 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -412,6 +414,29 @@ public:
         return pending_async_operations != 0;
     }
 
+    /// Zeste: background halves of RunAsync / RunOnThreadWorker still running. They end with
+    /// Thread::WakeAfterDelay, which uses the kernel and the timing, so the system must not be
+    /// torn down while one runs (a blocking accept() woken by the SOC service closing its
+    /// sockets at shutdown crashed zeste.exe that way).
+    void BeginAsyncSection() {
+        std::scoped_lock lock{async_sections_mutex};
+        ++running_async_sections;
+    }
+
+    void EndAsyncSection() {
+        std::scoped_lock lock{async_sections_mutex};
+        if (--running_async_sections == 0) {
+            async_sections_done.notify_all();
+        }
+    }
+
+    /// Waits until no background section runs. Returns how many still run after `timeout`.
+    int WaitForAsyncSections(std::chrono::milliseconds timeout) {
+        std::unique_lock lock{async_sections_mutex};
+        async_sections_done.wait_for(lock, timeout, [this] { return running_async_sections == 0; });
+        return running_async_sections;
+    }
+
     void UpdateCPUAndMemoryState(u64 title_id, MemoryMode memory_mode,
                                  New3dsHwCapabilities n3ds_hw_cap);
 
@@ -433,6 +458,10 @@ private:
     std::atomic<u32> next_object_id{0};
 
     std::atomic<int> pending_async_operations{};
+
+    std::mutex async_sections_mutex;
+    std::condition_variable async_sections_done;
+    int running_async_sections = 0;
 
     // Note: keep the member order below in order to perform correct destruction.
     // Thread manager is destructed before process list in order to Stop threads and clear thread

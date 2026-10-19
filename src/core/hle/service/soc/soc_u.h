@@ -61,6 +61,11 @@ public:
     // Gets the interface info that is able to reach the internet.
     std::optional<InterfaceInfo> GetDefaultInterfaceInfo();
 
+    /// Zeste, at shutdown: closes every host socket so blocking accept/recv/poll calls running in
+    /// the background return, but keeps the entries (those calls still read them) until the
+    /// service is destroyed.
+    void CloseAllSocketsForShutdown();
+
 private:
     static constexpr Result ResultWrongProcess =
         Result(4, ErrorModule::SOC, ErrorSummary::InvalidState, ErrorLevel::Status);

@@ -50,6 +50,7 @@
 #include "core/hle/service/mic/mic_u.h"
 #include "core/hle/service/plgldr/plgldr.h"
 #include "core/hle/service/service.h"
+#include "core/hle/service/soc/soc_u.h"
 #include "core/hle/service/sm/sm.h"
 #include "core/hw/aes/key.h"
 #include "core/loader/loader.h"
@@ -829,6 +830,21 @@ void System::Shutdown(bool is_deserializing) {
     }
     custom_tex_manager.reset();
     archive_manager.reset();
+    // Zeste: services run blocking calls (accept, recv, poll...) in the background, and those end
+    // in the kernel and the timing. A listening socket the game kept open made zeste.exe crash on
+    // exit: the SOC service closed it while being destroyed, accept() returned and woke a thread
+    // of a kernel being torn down. Close the host sockets first, wait for those calls, and only
+    // then destroy the services and the kernel.
+    if (kernel && service_manager) {
+        if (auto soc = Service::SOC::GetService(*this)) {
+            soc->CloseAllSocketsForShutdown();
+        }
+        if (const int running = kernel->WaitForAsyncSections(std::chrono::seconds(10))) {
+            LOG_WARNING(Core, "Zeste: {} asynchronous service operation(s) still running at "
+                              "shutdown",
+                        running);
+        }
+    }
     service_manager.reset();
     dsp_core.reset();
     kernel.reset();

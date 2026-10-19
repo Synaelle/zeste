@@ -123,6 +123,7 @@
 #include "core/zeste_keyboard.h"
 #include "core/zeste_summary.h"
 #include "core/zeste_core.h"
+#include "common/zeste_crash.h"
 #include "common/zeste_run.h"
 #include "input_common/main.h"
 #include "ui_main.h"
@@ -5116,6 +5117,13 @@ int LaunchQtFrontend(int argc, char* argv[]) {
         app.installNativeEventFilter(&no_activate_filter);
     }
 #endif
+    // Zeste's own crashes: dump, stack and a summary in the run folder (Windows).
+    Zeste::Crash::Install([](unsigned int code, const std::string& what) {
+        if (!Zeste::Run::Folder().empty()) {
+            Zeste::Run::Note("exit code", fmt::format("0x{:08X} (Zeste crashed)", code));
+            Zeste::Summary::Write(Zeste::Run::Folder(), static_cast<int>(code), what);
+        }
+    });
     GMainWindow main_window(system);
     const auto finish_run = [](int code) {
         Zeste::Run::Note("exit code", std::to_string(code));

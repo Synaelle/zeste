@@ -108,6 +108,8 @@ add_library(citra_common STATIC EXCLUDE_FROM_ALL
     x64/xbyak_util.h
     zstd_compression.cpp
     zstd_compression.h
+    zeste_crash.cpp
+    zeste_crash.h
     zeste_report.cpp
     zeste_report.h
     zeste_run.cpp
