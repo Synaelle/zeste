@@ -193,6 +193,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
     util/spinbox.cpp
     util/spinbox.h
     util/util.cpp
+    zeste_bug_report.cpp
+    zeste_bug_report.h
     zeste_update.cpp
     zeste_update.h
     util/util.h

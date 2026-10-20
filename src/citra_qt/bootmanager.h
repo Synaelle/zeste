@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <QThread>
@@ -162,6 +163,9 @@ public:
     void ReleaseRenderTarget();
 
     void CaptureScreenshot(u32 res_scale, const QString& screenshot_path);
+    /// Zeste: captures the next presented frame (current layout, native resolution) and calls
+    /// `done` with it on the GUI thread.
+    void CaptureScreenshotImage(std::function<void(QImage)> done);
 
     std::pair<u32, u32> ScaleTouch(const QPointF pos) const;
 

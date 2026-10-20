@@ -712,6 +712,9 @@ void LogSettings();
 void SetZesteStrictPreset(bool enabled);
 /// Zeste: true when at least one hardware-accuracy option is on.
 bool IsAnyZesteOptionEnabled();
+
+/// True when every option of the strict preset is on (what --strict sets).
+bool IsZesteStrictPreset();
 /// Zeste: enables one option by its short name (see --help). Returns false for unknown names.
 bool ApplyZesteOptionByName(const std::string& name);
 

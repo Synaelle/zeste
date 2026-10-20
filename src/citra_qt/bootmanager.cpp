@@ -735,6 +735,20 @@ void GRenderWindow::CaptureScreenshot(u32 res_scale, const QString& screenshot_p
         layout);
 }
 
+void GRenderWindow::CaptureScreenshotImage(std::function<void(QImage)> done) {
+    auto& renderer = system.GPU().Renderer();
+    const auto layout{Layout::FrameLayoutFromResolutionScale(1, is_secondary)};
+    screenshot_image = QImage(QSize(layout.width, layout.height), QImage::Format_RGB32);
+    renderer.RequestScreenshot(
+        screenshot_image.bits(),
+        [this, done = std::move(done)](bool invert_y) {
+            QImage image = GetMirroredImage(screenshot_image, false, invert_y).copy();
+            QMetaObject::invokeMethod(
+                this, [done, image = std::move(image)] { done(image); }, Qt::QueuedConnection);
+        },
+        layout);
+}
+
 void GRenderWindow::OnMinimalClientAreaChangeRequest(std::pair<u32, u32> minimal_size) {
     setMinimumSize(minimal_size.first, minimal_size.second);
 }

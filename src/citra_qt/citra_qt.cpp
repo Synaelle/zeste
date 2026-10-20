@@ -88,6 +88,7 @@
 #include "citra_qt/util/clickable_label.h"
 #include "citra_qt/util/graphics_device_info.h"
 #include "citra_qt/util/util.h"
+#include "citra_qt/zeste_bug_report.h"
 #include "citra_qt/zeste_update.h"
 #include "common/arch.h"
 #include "common/common_paths.h"
@@ -664,6 +665,7 @@ GMainWindow::GMainWindow(Core::System& system_)
 
     ConnectAppEvents();
     ConnectMenuEvents();
+    ZesteUpdateStrictUI();
     ConnectWidgetEvents();
 
     LOG_INFO(Frontend, "Zeste (Azahar fork) Version: {} | {}-{}", Common::g_build_fullname, Common::g_scm_branch,
@@ -865,6 +867,14 @@ void GMainWindow::InitializeWidgets() {
     connect(graphics_api_button, &QPushButton::clicked, this, [this] { UpdateAPIIndicator(true); });
 
     statusBar()->insertPermanentWidget(0, graphics_api_button);
+
+    // Zeste: strict hardware mode on/off (what --strict sets).
+    zeste_strict_button = new QPushButton(tr("STRICT"));
+    zeste_strict_button->setObjectName(QStringLiteral("TogglableStatusBarButton"));
+    zeste_strict_button->setFocusPolicy(Qt::NoFocus);
+    zeste_strict_button->setCheckable(true);
+    connect(zeste_strict_button, &QPushButton::clicked, this, &GMainWindow::ZesteSetStrict);
+    statusBar()->insertPermanentWidget(0, zeste_strict_button);
 
     volume_popup = new QWidget(this);
     volume_popup->setWindowFlags(Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::Popup);
@@ -1359,20 +1369,24 @@ void GMainWindow::ConnectMenuEvents() {
                 OnConfigure();
             });
     zeste_menu->addSeparator();
-    connect(zeste_menu->addAction(tr("Enable &strict hardware mode")), &QAction::triggered, this,
-            [this] {
-                Settings::SetZesteStrictPreset(true);
-                config->Save();
-                statusBar()->showMessage(
-                    tr("Zeste strict hardware mode enabled (some options apply at the next boot)"),
-                    5000);
-            });
+    zeste_strict_action = zeste_menu->addAction(tr("&Strict hardware mode"));
+    zeste_strict_action->setCheckable(true);
+    connect(zeste_strict_action, &QAction::triggered, this, &GMainWindow::ZesteSetStrict);
     connect(zeste_menu->addAction(tr("&Azahar behaviour (disable all)")), &QAction::triggered,
             this, [this] {
                 Settings::SetZesteStrictPreset(false);
                 config->Save();
+                ZesteUpdateStrictUI();
                 statusBar()->showMessage(tr("Zeste options disabled"), 5000);
             });
+    // Playtest report (only for the titles Zeste::BugReport knows).
+    auto* report_action = new QAction(this);
+    report_action->setShortcut(QKeySequence(Zeste::BugReport::Shortcut()));
+    report_action->setShortcutContext(Qt::ApplicationShortcut);
+    connect(report_action, &QAction::triggered, this, &GMainWindow::ZesteOpenPlaytestReport);
+    addAction(report_action);
+    render_window->addAction(report_action);
+    secondary_window->addAction(report_action);
     const auto connect_menu = [&](QAction* action, const auto& event_fn,
                                   QAction::MenuRole role = QAction::NoRole) {
         action->setMenuRole(role);
@@ -3399,6 +3413,7 @@ void GMainWindow::OnConfigure() {
         Settings::values.touch_from_button_maps = old_touch_from_button_maps;
         Settings::LoadProfile(old_input_profile_index);
     }
+    ZesteUpdateStrictUI();
 }
 
 void GMainWindow::OnLoadAmiibo() {
@@ -4804,6 +4819,81 @@ void GMainWindow::OnEmulatorUpdateAvailable() {
     }
 }
 #endif
+
+void GMainWindow::ZesteSetStrict(bool enabled) {
+    Settings::SetZesteStrictPreset(enabled);
+    if (!QtConfig::zeste_command_line_override) {
+        config->Save();
+    }
+    ZesteUpdateStrictUI();
+    statusBar()->showMessage(
+        enabled ? (emulation_running ? tr("Zeste strict hardware mode on (some checks start at the "
+                                          "next boot)")
+                                     : tr("Zeste strict hardware mode on"))
+                : tr("Zeste strict hardware mode off"),
+        5000);
+}
+
+void GMainWindow::ZesteUpdateStrictUI() {
+    const bool strict = Settings::IsZesteStrictPreset();
+    if (zeste_strict_button) {
+        zeste_strict_button->setChecked(strict);
+        zeste_strict_button->setToolTip(
+            strict ? tr("Strict hardware mode is on: every Zeste check is enabled. Click to turn "
+                        "them all off.")
+                   : Settings::IsAnyZesteOptionEnabled()
+                         ? tr("Some Zeste checks are on. Click to enable strict hardware mode "
+                              "(all of them).")
+                         : tr("Zeste checks are off (Azahar behaviour). Click to enable strict "
+                              "hardware mode."));
+    }
+    if (zeste_strict_action) {
+        zeste_strict_action->setChecked(strict);
+    }
+}
+
+void GMainWindow::ZesteOpenPlaytestReport() {
+    if (headless_mode || !emulation_running || !emu_thread || zeste_report_open ||
+        !Zeste::BugReport::IsEnabledFor(game_title_id)) {
+        return;
+    }
+    zeste_report_open = true;
+    const bool was_paused = system.frame_limiter.IsFrameAdvancing();
+
+    // The screenshot is the next frame the game presents (the one on screen when the key was
+    // pressed, give or take a frame); a timer opens the window without one if none comes.
+    auto opened = std::make_shared<bool>(false);
+    const auto open_window = [this, opened, was_paused](const QImage& screenshot) {
+        if (*opened) {
+            return;
+        }
+        *opened = true;
+        if (!emulation_running) {
+            zeste_report_open = false;
+            return;
+        }
+        if (!was_paused) {
+            OnPauseGame();
+        }
+        Zeste::BugReport::ReportDialog dialog(this, screenshot);
+        if (dialog.exec() == QDialog::Accepted) {
+            const QString saved = Zeste::BugReport::SaveReport(this, dialog, screenshot,
+                                                               game_title, game_title_id);
+            if (!saved.isEmpty()) {
+                statusBar()->showMessage(tr("Report saved to %1").arg(saved), 8000);
+            }
+        }
+        if (!was_paused && emulation_running) {
+            OnResumeGame(false);
+        }
+        zeste_report_open = false;
+    };
+    render_window->CaptureScreenshotImage(open_window);
+    QTimer::singleShot(2000, this, [open_window] { open_window(QImage{}); });
+    if (was_paused) {
+        system.frame_limiter.AdvanceFrame();
+    }
+}
 
 void GMainWindow::ZesteCheckForUpdates(bool asked) {
     Zeste::Update::Check(this, asked, [this, asked](const Zeste::Update::Result& result) {

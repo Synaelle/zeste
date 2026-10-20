@@ -332,6 +332,11 @@ private slots:
     /// Zeste: update check against the latest GitHub release. `asked`: from the Help menu (no
     /// cache, says when it is up to date or the check failed).
     void ZesteCheckForUpdates(bool asked);
+    /// Zeste: strict hardware mode from the status bar button or the Zeste menu.
+    void ZesteSetStrict(bool enabled);
+    void ZesteUpdateStrictUI();
+    /// Zeste: playtest report window (only for the titles Zeste::BugReport knows).
+    void ZesteOpenPlaytestReport();
 #ifdef ENABLE_QT_UPDATE_CHECKER
     void OnEmulatorUpdateAvailable();
 #endif
@@ -382,6 +387,9 @@ private:
     QLabel* emu_frametime_label = nullptr;
     QPushButton* graphics_api_button = nullptr;
     QPushButton* volume_button = nullptr;
+    QPushButton* zeste_strict_button = nullptr;
+    QAction* zeste_strict_action = nullptr;
+    bool zeste_report_open = false;
     QWidget* volume_popup = nullptr;
     QSlider* volume_slider = nullptr;
     QTimer status_bar_update_timer;

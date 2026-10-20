@@ -134,6 +134,13 @@ bool IsAnyZesteOptionEnabled() {
            values.zeste_fs_checks.GetValue();
 }
 
+bool IsZesteStrictPreset() {
+    return values.zeste_strict_pica.GetValue() && values.zeste_cpu_exceptions.GetValue() &&
+           values.zeste_kernel_fixes.GetValue() && values.zeste_cache_detection.GetValue() &&
+           values.zeste_hw_memory_layout.GetValue() && values.zeste_preempt_mode.GetValue() == 2 &&
+           values.zeste_strict_priority.GetValue() && values.zeste_fs_checks.GetValue();
+}
+
 void LogSettings() {
     const auto log_setting = [](std::string_view name, const auto& value) {
         LOG_INFO(Config, "{}: {}", name, value);
