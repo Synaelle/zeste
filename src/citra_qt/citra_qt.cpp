@@ -431,7 +431,7 @@ GMainWindow::GMainWindow(Core::System& system_)
         }
 
         if (args[i] == QStringLiteral("--version") || args[i] == QStringLiteral("-v")) {
-            const std::string version_string = std::string("Zeste (Azahar fork) ") + Common::g_build_fullname;
+            const std::string version_string = std::string("Zeste (Azahar fork) ") + Common::g_zeste_display_version;
             ShowCommandOutput("Version", version_string);
             exit(0);
         }
@@ -668,7 +668,7 @@ GMainWindow::GMainWindow(Core::System& system_)
     ZesteUpdateStrictUI();
     ConnectWidgetEvents();
 
-    LOG_INFO(Frontend, "Zeste (Azahar fork) Version: {} | {}-{}", Common::g_build_fullname, Common::g_scm_branch,
+    LOG_INFO(Frontend, "Zeste (Azahar fork) Version: {} | {}-{}", Common::g_zeste_display_version, Common::g_scm_branch,
              Common::g_scm_desc);
     std::string build_variant = Common::g_build_variant;
     if (build_variant == "") {
@@ -4941,7 +4941,7 @@ void GMainWindow::OnSwitchDiskResources(VideoCore::LoadCallbackStage stage, std:
 }
 
 void GMainWindow::UpdateWindowTitle() {
-    const QString full_name = QString::fromUtf8(Common::g_build_fullname);
+    const QString full_name = QString::fromUtf8(Common::g_zeste_display_version);
 
     if (game_title.isEmpty()) {
         setWindowTitle(QStringLiteral("Zeste %1").arg(full_name));

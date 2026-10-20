@@ -56,6 +56,16 @@ macro(generate_build_info)
     if (NOT ZESTE_VERSION)
         set(ZESTE_VERSION "unknown")
     endif()
+    # What the title bar shows: "0.4.5" at a release tag, "0.4.5-dev" after it, the commit
+    # without git tags.
+    if (ZESTE_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-.*)?$")
+        set(ZESTE_DISPLAY_VERSION "${CMAKE_MATCH_1}")
+        if (CMAKE_MATCH_2)
+            string(APPEND ZESTE_DISPLAY_VERSION "-dev")
+        endif()
+    else()
+        set(ZESTE_DISPLAY_VERSION "${GIT_SHORT_REV}")
+    endif()
 
     # Set build version
     set(REPO_NAME "")

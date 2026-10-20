@@ -12,7 +12,7 @@ AboutDialog::AboutDialog(QWidget* parent)
       ui(std::make_unique<Ui::AboutDialog>()) {
     ui->setupUi(this);
     ui->labelBuildInfo->setText(ui->labelBuildInfo->text().arg(
-        QString::fromUtf8(Common::g_build_fullname), QString::fromUtf8(Common::g_scm_branch),
+        QString::fromUtf8(Common::g_zeste_display_version), QString::fromUtf8(Common::g_scm_branch),
         QString::fromUtf8(Common::g_scm_desc), QString::fromUtf8(Common::g_build_date).left(10),
         QString::fromUtf8(Common::g_build_variant)));
 }
