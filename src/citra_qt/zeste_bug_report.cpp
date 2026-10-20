@@ -29,6 +29,9 @@
 #include "common/file_util.h"
 #include "common/logging/log.h"
 #include "common/scm_rev.h"
+#include "common/settings.h"
+#include "common/zeste_report.h"
+#include "common/zeste_run.h"
 
 namespace Zeste::BugReport {
 
@@ -271,24 +274,61 @@ QString SaveReport(QWidget* parent, const ReportDialog& dialog, const QImage& sc
         json[QStringLiteral("screenshot")] = QStringLiteral("screenshot.png");
     }
 
-    QJsonArray logs;
-    if (const Title* title = Find(title_id)) {
-        const QString logs_dir = QString::fromStdString(
-            FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir) + title->logs);
-        QDirIterator it(logs_dir, QDir::Files, QDirIterator::Subdirectories);
+    // Adds every file of `dir` (recursively) under `prefix` in the zip and lists it in `list`.
+    const auto add_folder = [&zip](const QString& dir, const QString& prefix, QJsonArray& list) {
+        constexpr qint64 MaxFileSize = 64ll << 20; // skip crash dumps and the like
+        QDirIterator it(dir, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {
             const QString file_path = it.next();
             QFile file(file_path);
-            if (!file.open(QIODevice::ReadOnly)) {
+            if (file.size() > MaxFileSize || !file.open(QIODevice::ReadOnly)) {
                 continue;
             }
-            const QString relative =
-                QStringLiteral("logs/") + QDir(logs_dir).relativeFilePath(file_path);
-            zip.Add(relative, file.readAll());
-            logs.append(relative);
+            const QString name = prefix + QDir(dir).relativeFilePath(file_path);
+            zip.Add(name, file.readAll());
+            list.append(name);
         }
+    };
+
+    // The game's own logs.
+    QJsonArray game_logs;
+    if (const Title* title = Find(title_id)) {
+        add_folder(QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::SDMCDir) +
+                                          title->logs),
+                   QStringLiteral("game_logs/"), game_logs);
     }
-    json[QStringLiteral("logs")] = logs;
+    json[QStringLiteral("game_logs")] = game_logs;
+
+    // Zeste's side: this run's folder (log, run.txt, profiles...) and the findings so far (the
+    // findings report itself is only written when emulation stops).
+    QJsonArray zeste_files;
+    if (!Zeste::Run::Folder().empty()) {
+        add_folder(QString::fromStdString(Zeste::Run::Folder()), QStringLiteral("zeste/"),
+                   zeste_files);
+    }
+    zip.Add(QStringLiteral("zeste/findings.md"),
+            QByteArray::fromStdString(Zeste::FormatMarkdown(
+                fmt::format("{} ({:016X}), playtest report", game_title.toStdString(), title_id))));
+    zeste_files.append(QStringLiteral("zeste/findings.md"));
+    json[QStringLiteral("zeste_files")] = zeste_files;
+
+    QJsonArray checks;
+    const auto check = [&checks](bool on, const char* name) {
+        if (on) {
+            checks.append(QString::fromLatin1(name));
+        }
+    };
+    const auto& v = Settings::values;
+    check(v.zeste_strict_pica.GetValue(), "strict_pica");
+    check(v.zeste_cpu_exceptions.GetValue(), "cpu_exceptions");
+    check(v.zeste_kernel_fixes.GetValue(), "kernel_fixes");
+    check(v.zeste_cache_detection.GetValue(), "cache_detection");
+    check(v.zeste_hw_memory_layout.GetValue(), "hw_memory_layout");
+    check(v.zeste_preempt_mode.GetValue() == 1, "preempt_svc");
+    check(v.zeste_preempt_mode.GetValue() == 2, "preempt_random");
+    check(v.zeste_strict_priority.GetValue(), "strict_priority");
+    check(v.zeste_fs_checks.GetValue(), "fs_checks");
+    json[QStringLiteral("zeste_checks")] = checks;
     zip.Add(QStringLiteral("report.json"), QJsonDocument(json).toJson(QJsonDocument::Indented));
 
     QFile out(path);
@@ -297,8 +337,8 @@ QString SaveReport(QWidget* parent, const ReportDialog& dialog, const QImage& sc
                              QObject::tr("Could not write %1: %2").arg(path, out.errorString()));
         return {};
     }
-    LOG_INFO(Frontend, "Zeste: playtest report saved to {} ({} log files)", path.toStdString(),
-             logs.size());
+    LOG_INFO(Frontend, "Zeste: playtest report saved to {} ({} game logs, {} Zeste files)",
+             path.toStdString(), game_logs.size(), zeste_files.size());
     return path;
 }
 
