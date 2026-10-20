@@ -70,6 +70,7 @@ struct State {
     std::vector<HeldInput> held;
     u32 sticky_buttons = 0;
     u64 stick_until = 0;
+    u64 cstick_until = 0;
     u64 touch_until = 0;
     InputOverride input;
     bool active = false;
@@ -119,6 +120,10 @@ bool ParseButtons(const std::string& text, u32& out) {
             out |= BUTTON_LEFT;
         } else if (name == "RIGHT") {
             out |= BUTTON_RIGHT;
+        } else if (name == "ZL") {
+            out |= BUTTON_ZL;
+        } else if (name == "ZR") {
+            out |= BUTTON_ZR;
         } else if (name == "ALL") {
             out |= 0xFFF;
         } else {
@@ -192,7 +197,7 @@ void Quit(Core::System& system, int code, const std::string& reason) {
 
 std::string ValidateCommand(const std::vector<std::string>& args) {
     static const std::vector<std::pair<std::string, std::size_t>> min_args = {
-        {"press", 2},     {"hold", 2},      {"release", 2},   {"touch", 3},   {"stick", 3},
+        {"press", 2},     {"hold", 2},      {"release", 2},   {"touch", 3},   {"stick", 3},   {"cstick", 3},
         {"lcd", 3},       {"screenshot", 2}, {"dump-mem", 4}, {"dump-phys", 4}, {"dump-vram", 2},
         {"dump-cmdlist", 2}, {"home", 1},   {"sleep", 1},     {"close", 1},   {"rosalina", 1},
         {"report", 1},    {"log", 1},       {"quit", 1},      {"keyboard", 1},
@@ -285,6 +290,14 @@ void Execute(Core::System& system, const Command& command) {
         s.input.stick_active = s.input.stick_x != 0 || s.input.stick_y != 0;
         s.stick_until =
             s.input.stick_active
+                ? frame + std::max<u64>(1, args.size() > 3 ? ParseNumber(args[3], 1) : 1)
+                : 0;
+    } else if (verb == "cstick") {
+        s.input.cstick_x = static_cast<s16>(std::clamp<s64>(ParseSigned(args[1]), -156, 156));
+        s.input.cstick_y = static_cast<s16>(std::clamp<s64>(ParseSigned(args[2]), -156, 156));
+        s.input.cstick_active = s.input.cstick_x != 0 || s.input.cstick_y != 0;
+        s.cstick_until =
+            s.input.cstick_active
                 ? frame + std::max<u64>(1, args.size() > 3 ? ParseNumber(args[3], 1) : 1)
                 : 0;
     } else if (verb == "lcd" || verb == "screenshot") {
@@ -584,6 +597,10 @@ void OnVBlank(Core::System& system) {
     if (s.input.stick_active && s.stick_until <= frame) {
         s.input.stick_active = false;
         s.input.stick_x = s.input.stick_y = 0;
+    }
+    if (s.input.cstick_active && s.cstick_until <= frame) {
+        s.input.cstick_active = false;
+        s.input.cstick_x = s.input.cstick_y = 0;
     }
 }
 

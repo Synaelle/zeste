@@ -71,7 +71,13 @@ enum Buttons : u32 {
     BUTTON_L = 1 << 9,
     BUTTON_X = 1 << 10,
     BUTTON_Y = 1 << 11,
+    // New 3DS: these come from ir:rst (merged into hidKeysHeld by libctru), not the HID pad.
+    BUTTON_ZL = 1 << 14,
+    BUTTON_ZR = 1 << 15,
 };
+
+/// Buttons that belong to ir:rst rather than the HID pad.
+constexpr u32 IrRstButtons = BUTTON_ZL | BUTTON_ZR;
 
 struct InputOverride {
     u32 buttons = 0;
@@ -81,6 +87,9 @@ struct InputOverride {
     bool touch_active = false;
     u16 touch_x = 0;
     u16 touch_y = 0;
+    bool cstick_active = false; ///< New 3DS C stick (ir:rst), same range as the circle pad
+    s16 cstick_x = 0;
+    s16 cstick_y = 0;
 };
 
 /// Loads a script file. Returns false (and logs) on a parse error.

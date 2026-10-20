@@ -13,6 +13,7 @@
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/hid/hid.h"
 #include "core/hle/service/ir/ir_rst.h"
+#include "core/zeste_automation.h"
 #include "core/movie.h"
 
 SERIALIZE_EXPORT_IMPL(Service::IR::IR_RST)
@@ -98,6 +99,16 @@ void IR_RST::UpdateCallback(std::uintptr_t user_data, s64 cycles_late) {
         constexpr int MAX_CSTICK_RADIUS = 0x9C; // Max value for a c-stick radius
         c_stick_x = static_cast<s16>(c_stick_x_f * MAX_CSTICK_RADIUS);
         c_stick_y = static_cast<s16>(c_stick_y_f * MAX_CSTICK_RADIUS);
+
+        // Zeste automation: scripted ZL / ZR and C stick (--script / RPC).
+        if (Zeste::Automation::IsActive()) {
+            const auto& scripted = Zeste::Automation::GetInputOverride();
+            state.hex |= scripted.buttons & Zeste::Automation::IrRstButtons;
+            if (scripted.cstick_active) {
+                c_stick_x = scripted.cstick_x;
+                c_stick_y = scripted.cstick_y;
+            }
+        }
 
         system.Movie().HandleIrRst(state, c_stick_x, c_stick_y);
 

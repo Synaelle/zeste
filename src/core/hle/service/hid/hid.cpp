@@ -244,7 +244,7 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         // Zeste automation: scripted buttons and circle pad (--script / RPC).
         if (Zeste::Automation::IsActive()) {
             const auto& scripted = Zeste::Automation::GetInputOverride();
-            state.hex |= scripted.buttons;
+            state.hex |= scripted.buttons & ~Zeste::Automation::IrRstButtons;
             if (scripted.stick_active) {
                 circle_pad_x = scripted.stick_x;
                 circle_pad_y = scripted.stick_y;
