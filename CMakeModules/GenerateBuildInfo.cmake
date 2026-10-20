@@ -46,6 +46,14 @@ macro(generate_build_info)
                         OUTPUT_STRIP_TRAILING_WHITESPACE
                         ERROR_QUIET)
         string(REGEX REPLACE "^v" "" ZESTE_VERSION "${ZESTE_VERSION}")
+        # A new tag alone changes no source file: reconfigure when the tags change, so a build
+        # made right after tagging a release reports that release.
+        foreach (tags_file "${CMAKE_SOURCE_DIR}/.git/refs/tags" "${CMAKE_SOURCE_DIR}/.git/packed-refs")
+            if (EXISTS "${tags_file}")
+                set_property(DIRECTORY "${CMAKE_SOURCE_DIR}" APPEND PROPERTY
+                             CMAKE_CONFIGURE_DEPENDS "${tags_file}")
+            endif()
+        endforeach()
     else()
         # self-packed archive?
         set(GIT_REV "UNKNOWN")
