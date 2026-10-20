@@ -33,8 +33,9 @@ When enabled (everything is off by default), it can:
 - boot a `.cia` straight from the command line
 - tell you when a new Zeste release is out, in headless runs too (Help > Check for Updates)
 
-Settings are under Zeste > Hardware accuracy settings, or `--strict` on the command line
-to turn everything on. `zeste.exe --help` lists the options.
+Settings are under Zeste > Hardware accuracy settings. The STRICT button in the status bar
+(or `--strict` on the command line) turns everything on or off. `zeste.exe --help` lists the
+options.
 
 ## Downloads
 
