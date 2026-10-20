@@ -5213,6 +5213,53 @@ int LaunchQtFrontend(int argc, char* argv[]) {
 
     QApplication app(argc, argv);
 
+#ifdef _WIN32
+    // Zeste is portable: QFileDialog always saves its last folder and view in the registry
+    // (HKCU\Software\QtProject\OrganizationDefaults\FileDialog, shared by every Qt program).
+    // Snapshot it now and put it back as it was when Zeste exits.
+    struct QtRegistryRestore {
+        const QString root_path = QStringLiteral("HKEY_CURRENT_USER\\Software");
+        bool had_qtproject = false;
+        bool had_defaults = false;
+        bool had_dialog = false;
+        QVariantMap dialog;
+
+        QtRegistryRestore() {
+            QSettings root(root_path, QSettings::NativeFormat);
+            had_qtproject = root.childGroups().contains(QStringLiteral("QtProject"));
+            root.beginGroup(QStringLiteral("QtProject"));
+            had_defaults = root.childGroups().contains(QStringLiteral("OrganizationDefaults"));
+            root.beginGroup(QStringLiteral("OrganizationDefaults"));
+            had_dialog = root.childGroups().contains(QStringLiteral("FileDialog"));
+            root.beginGroup(QStringLiteral("FileDialog"));
+            for (const QString& key : root.allKeys()) {
+                dialog.insert(key, root.value(key));
+            }
+        }
+
+        ~QtRegistryRestore() {
+            QSettings root(root_path, QSettings::NativeFormat);
+            if (!had_qtproject) {
+                root.remove(QStringLiteral("QtProject"));
+                return;
+            }
+            root.beginGroup(QStringLiteral("QtProject"));
+            if (!had_defaults) {
+                root.remove(QStringLiteral("OrganizationDefaults"));
+                return;
+            }
+            root.beginGroup(QStringLiteral("OrganizationDefaults"));
+            root.remove(QStringLiteral("FileDialog"));
+            if (had_dialog) {
+                root.beginGroup(QStringLiteral("FileDialog"));
+                for (auto it = dialog.cbegin(); it != dialog.cend(); ++it) {
+                    root.setValue(it.key(), it.value());
+                }
+            }
+        }
+    } qt_registry_restore;
+#endif
+
     // Required when using .qrc resources from within a static library.
     // See https://doc.qt.io/qt-5/resources.html#using-resources-in-a-library
     Q_INIT_RESOURCE(compatibility_list);
