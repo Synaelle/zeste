@@ -4,14 +4,15 @@
 
 <h1 align="center">Zeste</h1>
 
+> [!IMPORTANT]
+> **Homebrew and New 3DS only.** Commercial games aren't supported: with Zeste's options off they
+> should run much like in Azahar, but turning the options on may break them. Every check is based
+> on a New 3DS. The Old 3DS and 2DS aren't tested and may behave differently.
+
 Zeste is a 3DS emulator for testing homebrew, based on
 [Azahar](https://github.com/azahar-emu/azahar). Azahar runs a lot of code that would crash or
 misbehave on a real console. Zeste adds checks that catch those problems on your PC, before you
 try the app on hardware.
-
-**Homebrew and New 3DS only.** Commercial games aren't supported: with Zeste's options off they
-should run much like in Azahar, but turning the options on may break them. Every check is based
-on a New 3DS. The Old 3DS and 2DS aren't tested and may behave differently.
 
 When enabled (everything is off by default), it can:
 
