@@ -2,6 +2,7 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
+#include <algorithm>
 #include <cryptopp/sha.h>
 #include "common/alignment.h"
 #include "common/file_util.h"
@@ -184,6 +185,12 @@ u32 TitleMetadata::GetDLPContentID() const {
 
 u32 TitleMetadata::GetContentIDByIndex(std::size_t index) const {
     return tmd_chunks[index].id;
+}
+
+bool TitleMetadata::HasContentIndex(u16 content_index) const {
+    return std::any_of(tmd_chunks.begin(), tmd_chunks.end(), [content_index](const auto& chunk) {
+        return chunk.index == content_index;
+    });
 }
 
 u16 TitleMetadata::GetContentTypeByIndex(std::size_t index) const {

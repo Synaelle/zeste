@@ -20,6 +20,8 @@ Every Zeste release, newest first. Releases are on
   Configure > Hardware accuracy > Reporting or with `--zeste no_memory_warnings`.
 - Fix: a script `quit` run right after a `wait-log` timeout made Zeste crash on exit (exit code
   0xC0000005 instead of 3). The first quit now wins.
+- HOME Menu: titles without a manual (most homebrew CIAs) no longer get a Manual button. The
+  manual's content index was given for every installed title, and the button led to an error.
 
 ## 0.5.1 (2026-10-22)
 

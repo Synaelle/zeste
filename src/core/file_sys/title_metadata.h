@@ -102,6 +102,8 @@ public:
     u64 GetContentSizeByIndex(std::size_t index) const;
     u64 GetCombinedContentSize(const CIAHeader* header) const;
     bool GetContentOptional(std::size_t index) const;
+    /// True when a content chunk has this content index (0 main, 1 manual, 2 DLP child).
+    bool HasContentIndex(u16 content_index) const;
     std::array<u8, 16> GetContentCTRByIndex(std::size_t index) const;
     bool HasEncryptedContent(const CIAHeader* header = nullptr) const;
 

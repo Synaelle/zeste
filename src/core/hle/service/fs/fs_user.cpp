@@ -1774,16 +1774,18 @@ ResultVal<u16> FS_USER::GetSpecialContentIndexFromTMD(MediaType media_type, u64 
         return ResultUnknown;
     }
 
-    // TODO(B3N30): Does real 3DS check if content exists in TMD?
-
-    switch (type) {
-    case SpecialContentType::Manual:
-        return static_cast<u16>(FileSys::TMDContentIndex::Manual);
-    case SpecialContentType::DLPChild:
-        return static_cast<u16>(FileSys::TMDContentIndex::DLP);
-    default:
-        ASSERT(false);
+    // Zeste: only when the title has that content. The HOME Menu shows the Manual button from
+    // this answer: titles without a manual (most homebrew CIAs) got one that led nowhere.
+    const u16 index = type == SpecialContentType::Manual
+                          ? static_cast<u16>(FileSys::TMDContentIndex::Manual)
+                          : static_cast<u16>(FileSys::TMDContentIndex::DLP);
+    if (!tmd.HasContentIndex(index)) {
+        LOG_INFO(Service_FS, "title {:016X} has no content {} (special content type {})",
+                 title_id, index, static_cast<u32>(type));
+        // TODO: the console's result code for a missing special content is not known.
+        return ResultUnknown;
     }
+    return index;
 
     return ResultUnknown;
 }
