@@ -131,7 +131,12 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
     root->addWidget(boot_note);
     root->addStretch();
 
-    hw_memory_layout->setEnabled(!is_powered_on);
+    // New 3DS only: the 124 MB is the Homebrew Launcher's size on a New 3DS.
+    hw_memory_layout->setEnabled(!is_powered_on && Settings::values.is_new_3ds.GetValue());
+    if (!Settings::values.is_new_3ds.GetValue()) {
+        hw_memory_layout->setToolTip(tr("New 3DS only: not available while Zeste emulates an "
+                                        "Old 3DS (System > New 3DS mode off)."));
+    }
 
     SetConfiguration();
 }

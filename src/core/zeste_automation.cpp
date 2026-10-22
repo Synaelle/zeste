@@ -266,6 +266,11 @@ void Execute(Core::System& system, const Command& command) {
     if (verb == "press" || verb == "hold") {
         u32 buttons = 0;
         ParseButtons(args[1], buttons);
+        if ((buttons & IrRstButtons) && !Settings::values.is_new_3ds.GetValue()) {
+            LOG_WARNING(Zeste, "automation: {} {}: an Old 3DS has no ZL / ZR (only with the "
+                               "Circle Pad Pro, which scripts do not drive); ignored",
+                        verb, args[1]);
+        }
         if (verb == "hold") {
             s.sticky_buttons |= buttons;
         } else {
@@ -292,6 +297,8 @@ void Execute(Core::System& system, const Command& command) {
             s.input.stick_active
                 ? frame + std::max<u64>(1, args.size() > 3 ? ParseNumber(args[3], 1) : 1)
                 : 0;
+    } else if (verb == "cstick" && !Settings::values.is_new_3ds.GetValue()) {
+        LOG_WARNING(Zeste, "automation: cstick: an Old 3DS has no C stick; ignored");
     } else if (verb == "cstick") {
         s.input.cstick_x = static_cast<s16>(std::clamp<s64>(ParseSigned(args[1]), -156, 156));
         s.input.cstick_y = static_cast<s16>(std::clamp<s64>(ParseSigned(args[2]), -156, 156));

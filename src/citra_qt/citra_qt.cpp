@@ -2042,6 +2042,18 @@ void GMainWindow::BootGame(const QString& filename) {
     loading_screen->show();
 
     emulation_running = true;
+    if (!Settings::values.is_new_3ds.GetValue()) {
+        // Zeste: the Old 3DS side is experimental (no hardware to check it against).
+        if (headless_mode) {
+            std::cout << "Zeste: Old 3DS mode is experimental (not checked against a real Old "
+                         "3DS)"
+                      << std::endl;
+        } else {
+            statusBar()->showMessage(tr("Old 3DS mode is experimental: not checked against a "
+                                        "real Old 3DS"),
+                                     10000);
+        }
+    }
     if (ui->action_Fullscreen->isChecked()) {
         ShowFullscreen();
     }
@@ -5027,7 +5039,10 @@ void GMainWindow::OnSwitchDiskResources(VideoCore::LoadCallbackStage stage, std:
 }
 
 void GMainWindow::UpdateWindowTitle() {
-    const QString full_name = QString::fromUtf8(Common::g_zeste_display_version);
+    QString full_name = QString::fromUtf8(Common::g_zeste_display_version);
+    if (!game_title.isEmpty() && !Settings::values.is_new_3ds.GetValue()) {
+        full_name += QStringLiteral(" (Old 3DS, experimental)");
+    }
 
     if (game_title.isEmpty()) {
         setWindowTitle(QStringLiteral("Zeste %1").arg(full_name));

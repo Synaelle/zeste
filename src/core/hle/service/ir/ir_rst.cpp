@@ -100,8 +100,9 @@ void IR_RST::UpdateCallback(std::uintptr_t user_data, s64 cycles_late) {
         c_stick_x = static_cast<s16>(c_stick_x_f * MAX_CSTICK_RADIUS);
         c_stick_y = static_cast<s16>(c_stick_y_f * MAX_CSTICK_RADIUS);
 
-        // Zeste automation: scripted ZL / ZR and C stick (--script / RPC).
-        if (Zeste::Automation::IsActive()) {
+        // Zeste automation: scripted ZL / ZR and C stick (--script / RPC). New 3DS only: an Old
+        // 3DS has them only through the Circle Pad Pro, which scripts do not drive.
+        if (Zeste::Automation::IsActive() && Settings::values.is_new_3ds.GetValue()) {
             const auto& scripted = Zeste::Automation::GetInputOverride();
             state.hex |= scripted.buttons & Zeste::Automation::IrRstButtons;
             if (scripted.cstick_active) {

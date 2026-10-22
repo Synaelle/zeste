@@ -70,6 +70,11 @@ void SetCountryOverride(int country_code) {
 }
 
 void InstallCoreHooks(Core::System& system) {
+    if (!Settings::values.is_new_3ds.GetValue()) {
+        LOG_WARNING(Zeste, "Old 3DS mode is experimental: nothing in it has been checked "
+                           "against a real Old 3DS, and Zeste's checks come from New 3DS "
+                           "measurements");
+    }
     if (g_country_override >= 0) {
         if (auto cfg = Service::CFG::GetModule(system)) {
             // In memory only: UpdateConfigNANDSavegame is not called, the NAND keeps its own.
