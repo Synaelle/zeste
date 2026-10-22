@@ -5,6 +5,8 @@ Every Zeste release, newest first. Releases are on
 
 ## Unreleased
 
+- Fix: the hidden Enhancements tab (and the per-game Cheats tab) showed behind the settings.
+
 ## 0.5.2 (2026-10-22)
 
 - New status bar look: no frame around each item, a faint divider between the Zeste buttons and

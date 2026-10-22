@@ -58,7 +58,8 @@ ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const QString
     ui->tabWidget->addTab(graphics_tab.get(), tr("Graphics"));
     ui->tabWidget->addTab(audio_tab.get(), tr("Audio"));
     ui->tabWidget->addTab(debug_tab.get(), tr("Debug"));
-    // Zeste: no Cheats tab (memory can be written over RPC).
+    // Zeste: no Cheats tab (memory can be written over RPC). Hidden, or it is drawn on the dialog.
+    cheat_tab->hide();
 
     setFocusPolicy(Qt::ClickFocus);
     setWindowTitle(tr("Properties"));

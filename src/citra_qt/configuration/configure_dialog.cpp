@@ -56,7 +56,9 @@ ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_, Cor
     ui->tabWidget->addTab(hotkeys_tab.get(), tr("Keyboard Hotkeys"));
     ui->tabWidget->addTab(graphics_tab.get(), tr("Graphics"));
     // Zeste: no Enhancements tab (filters, upscaling, post-processing hide what the console
-    // shows).
+    // shows). The widget is kept for its settings, hidden: unparented to a tab, it would be drawn
+    // on the dialog itself.
+    enhancements_tab->hide();
     ui->tabWidget->addTab(layout_tab.get(), tr("Layout"));
     ui->tabWidget->addTab(audio_tab.get(), tr("Audio"));
     ui->tabWidget->addTab(camera_tab.get(), tr("Camera"));
