@@ -5,11 +5,20 @@
 <h1 align="center">Zeste</h1>
 
 > [!IMPORTANT]
-> **Homebrew and New 3DS only.** Commercial games aren't supported: with Zeste's options off they
-> should run much like in Azahar, but turning the options on may break them. Every check is based
-> on a New 3DS. The Old 3DS and 2DS aren't tested and may behave differently.
-> Work on Old 3DS support is being done on a separate branch:
-> [`old3ds`](https://github.com/Synaelle/zeste/tree/old3ds) (very experimental).
+> **Homebrew only, New 3DS first.** Commercial games aren't supported: with Zeste's options off
+> they should run much like in Azahar, but turning the options on may break them. Every check is
+> based on New 3DS measurements, and Zeste emulates a New 3DS by default.
+
+> [!WARNING]
+> **The Old 3DS side is experimental.** Zeste can emulate an Old 3DS (Configure > System, New 3DS
+> mode off, or `--console old3ds`), but I don't have an Old 3DS or a 2DS, so nothing in that mode
+> has been checked against the real console. The New 3DS-only parts (the Homebrew Launcher's
+> 124 MB, ZL / ZR / C stick in scripts) are off in that mode. A game can pass there and still fail
+> on an Old 3DS.
+
+> [!TIP]
+> **Any contribution for Old 3DS accuracy is welcome!** Measurements from a real Old 3DS or 2DS
+> (test programs run on the console, with their results) are what the Old 3DS side needs most.
 
 Zeste is a 3DS emulator for testing homebrew, based on
 [Azahar](https://github.com/azahar-emu/azahar). Azahar runs a lot of code that would crash or
@@ -50,6 +59,8 @@ options.
 ## Downloads
 
 Zeste supports Windows only. Releases are a zip with `zeste.exe` and its DLLs.
+Changes that only affect the Old 3DS side come out as pre-releases (`0.5.0-pre1`, ...). They
+never check for updates, and normal Zeste is never offered them.
 
 Zeste is portable. Everything it writes (settings, the emulated SD card and NAND, logs, run
 reports) goes into a `user` folder next to `zeste.exe`, created on the first start, so the
