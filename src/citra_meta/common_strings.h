@@ -62,6 +62,7 @@ constexpr char help_string[] =
     "    --offline               No network: Wi-Fi disconnected, lookups, HTTP and outgoing\n"
     "                              connections fail (Nintendo's services are always blocked)\n"
     "    --rpc                   Enable the RPC server (UDP 45987, see dist/scripting/ZesteRPC.py)\n"
+    "    --rpc-port [n]          RPC server on port n (0 = a free one, printed on stdout)\n"
     "    --zeste-report [path]   Inaccuracy report path, without extension\n"
     "                              (default: <log dir>/zeste_report.md/.json)";
 
