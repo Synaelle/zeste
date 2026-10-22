@@ -720,11 +720,19 @@ GMainWindow::GMainWindow(Core::System& system_)
         QMetaObject::invokeMethod(
             this,
             [this, code] {
+                // The first quit wins: a second one (a script `quit` right after a wait-log
+                // timeout) used to leave the event loop before the window closed, so input
+                // shutdown ran at process exit and crashed.
+                if (zeste_quit_requested) {
+                    return;
+                }
+                zeste_quit_requested = true;
                 headless_exit_code = code;
                 headless_exit_on_stop = true;
                 if (emu_thread) {
                     ShutdownGame();
                 } else {
+                    close();
                     QCoreApplication::exit(code);
                 }
             },

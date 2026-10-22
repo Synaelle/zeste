@@ -18,6 +18,8 @@ Every Zeste release, newest first. Releases are on
 - Memory warnings: when the game's malloc heap is 85% and then 95% full, a warning goes to the
   log, the console output and `run.txt`. The peak is in `summary.md`. On by default, off in
   Configure > Hardware accuracy > Reporting or with `--zeste no_memory_warnings`.
+- Fix: a script `quit` run right after a `wait-log` timeout made Zeste crash on exit (exit code
+  0xC0000005 instead of 3). The first quit now wins.
 
 ## 0.5.1 (2026-10-22)
 

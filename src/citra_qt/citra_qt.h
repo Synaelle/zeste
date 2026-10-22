@@ -398,6 +398,7 @@ private:
     bool message_label_used_for_movie = false;
     /// Zeste: quit the application (with an exit code) when emulation stops (headless runs).
     bool headless_exit_on_stop = false;
+    bool zeste_quit_requested = false; ///< A script / RPC quit is under way: later ones are ignored
     int headless_exit_code = 0;
     /// Zeste: the next OnConfigure opens on the Zeste page.
     bool configure_open_zeste = false;
