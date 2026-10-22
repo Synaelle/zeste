@@ -70,3 +70,4 @@ docs/
 tools/zeste/testrom/
 tools/zeste/calib/
 tools/zeste/sdbench/
+tools/zeste/release.ps1
