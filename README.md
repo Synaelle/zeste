@@ -34,6 +34,9 @@ When enabled (everything is off by default), it can:
   (why it ended, the crash with function names when given the `.elf`, the last log lines)
 - profile the CPU: the hottest functions per core and thread, and a flame-graph file
 - boot a `.cia` straight from the command line
+- boot the HOME Menu headless, as a New or Old 3DS, with a chosen region and country, and
+  optionally no network at all (`--offline`). This needs the system files from your own console
+  (File > Set Up System Files)
 - tell you when a new Zeste release is out, in headless runs too (Help > Check for Updates)
 
 Zeste never connects to Nintendo's online services (or Pretendo's). Name lookups and HTTP
