@@ -20,6 +20,7 @@
 #include "core/zeste_summary.h"
 #include "core/zeste_sched.h"
 #include "core/zeste_system_events.h"
+#include "core/hle/service/cfg/cfg.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 
@@ -60,7 +61,23 @@ bool ConsumeBreakRequest() {
     return requested;
 }
 
+namespace {
+int g_country_override = -1;
+} // namespace
+
+void SetCountryOverride(int country_code) {
+    g_country_override = country_code;
+}
+
 void InstallCoreHooks(Core::System& system) {
+    if (g_country_override >= 0) {
+        if (auto cfg = Service::CFG::GetModule(system)) {
+            // In memory only: UpdateConfigNANDSavegame is not called, the NAND keeps its own.
+            cfg->SetCountryCode(static_cast<u8>(g_country_override));
+            LOG_INFO(Zeste, "Console country set to {} for this run (--country)",
+                     g_country_override);
+        }
+    }
     Reset();
     Cache::Reset();
     Sched::Reset();

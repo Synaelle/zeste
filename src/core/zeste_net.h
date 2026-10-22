@@ -16,7 +16,12 @@ namespace Zeste::Net {
 /// True for Nintendo's online service domains (and their subdomains) and Pretendo's.
 bool IsBlockedHost(std::string_view host);
 
-/// IsBlockedHost, and logs the block (once per host) with `what` (e.g. "DNS lookup").
+/// --offline: the console has no network at all. The Wi-Fi reports disconnected, every name
+/// lookup and HTTP request fails, and outgoing connections fail with "network unreachable".
+void SetOffline(bool offline);
+bool IsOffline();
+
+/// IsBlockedHost (or offline), and logs the block (once per host) with `what` (e.g. "DNS lookup").
 bool CheckBlocked(std::string_view host, std::string_view what);
 
 } // namespace Zeste::Net

@@ -40,6 +40,10 @@ public:
     ~ConfigureSystem() override;
 
     void ApplyConfiguration();
+
+    /// Zeste --country: a CFG country code from its English name ("France") or number (77);
+    /// -1 when unknown.
+    static int CountryCodeFromName(const QString& name);
     void SetConfiguration();
     void RetranslateUI();
 

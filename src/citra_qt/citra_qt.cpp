@@ -52,6 +52,7 @@
 #include "citra_qt/configuration/config.h"
 #include "citra_qt/configuration/configure_dialog.h"
 #include "citra_qt/configuration/configure_per_game.h"
+#include "citra_qt/configuration/configure_system.h"
 #include "citra_qt/debugger/console.h"
 #include "citra_qt/debugger/graphics/graphics.h"
 #include "citra_qt/debugger/graphics/graphics_breakpoints.h"
@@ -123,6 +124,7 @@
 #include "audio_core/sink_details.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_keyboard.h"
+#include "core/zeste_net.h"
 #include "core/zeste_summary.h"
 #include "core/zeste_core.h"
 #include "common/zeste_crash.h"
@@ -540,6 +542,67 @@ GMainWindow::GMainWindow(Core::System& system_)
             QtConfig::zeste_command_line_override = true;
             continue;
         }
+        if (args[i] == QStringLiteral("--install-cia") && i + 1 < args.size()) {
+            // Installs without booting (repeatable), e.g. before --home-menu.
+            if (ZesteInstallCiaForBoot(args[++i]).isEmpty()) {
+                ShowCommandOutput("Zeste", "Could not install the CIA (see the log)");
+                exit(1);
+            }
+            continue;
+        }
+        if (args[i] == QStringLiteral("--console") && i + 1 < args.size()) {
+            const QString model = args[++i].toLower();
+            if (model != QStringLiteral("new3ds") && model != QStringLiteral("old3ds")) {
+                ShowCommandOutput("Zeste", "--console takes new3ds or old3ds");
+                exit(1);
+            }
+            Settings::values.is_new_3ds.SetGlobal(true);
+            Settings::values.is_new_3ds = model == QStringLiteral("new3ds");
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--region") && i + 1 < args.size()) {
+            static const QStringList regions{
+                QStringLiteral("jpn"), QStringLiteral("usa"), QStringLiteral("eur"),
+                QStringLiteral("aus"), QStringLiteral("chn"), QStringLiteral("kor"),
+                QStringLiteral("twn")};
+            const QString region = args[++i].toLower();
+            const int index = region == QStringLiteral("auto") ? -1 : regions.indexOf(region);
+            if (index < 0 && region != QStringLiteral("auto")) {
+                ShowCommandOutput("Zeste", "--region takes auto, jpn, usa, eur, aus, chn, kor or twn");
+                exit(1);
+            }
+            Settings::values.region_value.SetGlobal(true);
+            Settings::values.region_value = index;
+            QtConfig::zeste_command_line_override = true;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--country") && i + 1 < args.size()) {
+            const int code = ConfigureSystem::CountryCodeFromName(args[++i]);
+            if (code < 0) {
+                ShowCommandOutput("Zeste", "Unknown --country: " + args[i].toStdString() +
+                                               " (an English name like France, or a code)");
+                exit(1);
+            }
+            Zeste::SetCountryOverride(code);
+            continue;
+        }
+        if (args[i] == QStringLiteral("--offline")) {
+            Zeste::Net::SetOffline(true);
+            continue;
+        }
+        if (args[i] == QStringLiteral("--home-menu")) {
+            // Boots the HOME Menu installed in the NAND (needs system files from a console).
+            zeste_home_menu = true;
+            static const QStringList regions{
+                QStringLiteral("jpn"), QStringLiteral("usa"), QStringLiteral("eur"),
+                QStringLiteral("aus"), QStringLiteral("chn"), QStringLiteral("kor"),
+                QStringLiteral("twn")};
+            if (i + 1 < args.size() && regions.contains(args[i + 1].toLower())) {
+                zeste_home_menu_region = static_cast<int>(regions.indexOf(args[++i].toLower()));
+            }
+            continue;
+        }
         if (args[i] == QStringLiteral("--boot-cia") && i + 1 < args.size()) {
             const QString installed = ZesteInstallCiaForBoot(args[++i]);
             if (installed.isEmpty()) {
@@ -565,6 +628,29 @@ GMainWindow::GMainWindow(Core::System& system_)
             game_path = args[i];
             continue;
         }
+    }
+
+    if (zeste_home_menu) {
+        // Region: the one given, else --region / the setting, else the first one installed.
+        int region = zeste_home_menu_region;
+        if (region < 0 && Settings::values.region_value.GetValue() >= 0) {
+            region = Settings::values.region_value.GetValue();
+        }
+        for (int r = 0; region < 0 && r < 7; ++r) {
+            if (FileUtil::Exists(Core::GetHomeMenuNcchPath(static_cast<u32>(r)))) {
+                region = r;
+            }
+        }
+        const std::string path =
+            region >= 0 ? Core::GetHomeMenuNcchPath(static_cast<u32>(region)) : std::string{};
+        if (path.empty() || !FileUtil::Exists(path)) {
+            ShowCommandOutput("Zeste", "--home-menu: no HOME Menu installed for that region "
+                                       "(it needs the system files from a console: File > Set "
+                                       "Up System Files)");
+            exit(1);
+        }
+        LOG_INFO(Frontend, "Zeste: booting the HOME Menu ({})", path);
+        game_path = QString::fromStdString(path);
     }
 
     if (QtConfig::zeste_command_line_override) {

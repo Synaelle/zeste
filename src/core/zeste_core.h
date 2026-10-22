@@ -32,6 +32,10 @@ void SetReportBasePath(const std::string& path);
 /// the faulting instruction so the debugger/pause shows it.
 bool ConsumeBreakRequest();
 
+/// Country of the emulated console for this run (CFG country code, e.g. 77 = France), applied in
+/// memory when a title loads and never saved to the NAND's config. -1: the NAND's own.
+void SetCountryOverride(int country_code);
+
 /// Current emulated frame (VBlank count of the renderer), 0 when no GPU exists.
 u64 CurrentFrame(Core::System& system);
 

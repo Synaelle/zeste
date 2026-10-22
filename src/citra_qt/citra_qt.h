@@ -390,6 +390,8 @@ private:
     QPushButton* zeste_strict_button = nullptr;
     QAction* zeste_strict_action = nullptr;
     bool zeste_report_open = false;
+    bool zeste_home_menu = false;
+    int zeste_home_menu_region = -1;
     QWidget* volume_popup = nullptr;
     QSlider* volume_slider = nullptr;
     QTimer status_bar_update_timer;

@@ -38,6 +38,18 @@ std::string Normalize(std::string_view host) {
 
 } // namespace
 
+namespace {
+bool g_offline = false;
+} // namespace
+
+void SetOffline(bool offline) {
+    g_offline = offline;
+}
+
+bool IsOffline() {
+    return g_offline;
+}
+
 bool IsBlockedHost(std::string_view host) {
     const std::string name = Normalize(host);
     for (const std::string_view domain : BlockedDomains) {
@@ -51,6 +63,14 @@ bool IsBlockedHost(std::string_view host) {
 }
 
 bool CheckBlocked(std::string_view host, std::string_view what) {
+    if (g_offline) {
+        static std::once_flag once;
+        std::call_once(once, [] {
+            LOG_INFO(Zeste, "Offline (--offline): name lookups, HTTP requests and outgoing "
+                            "connections fail");
+        });
+        return true;
+    }
     if (!IsBlockedHost(host)) {
         return false;
     }

@@ -16,6 +16,7 @@
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/result.h"
 #include "core/hle/service/ac/ac.h"
+#include "core/zeste_net.h"
 #include "core/hle/service/ac/ac_i.h"
 #include "core/hle/service/ac/ac_u.h"
 #include "core/hle/service/soc/soc_u.h"
@@ -48,7 +49,7 @@ void Module::Interface::ConnectAsync(Kernel::HLERequestContext& ctx) {
     if (ac->connect_event) {
         ac->connect_event->SetName("AC:connect_event");
         ac->connect_event->Signal();
-        ac->ac_connected = true;
+        ac->ac_connected = !Zeste::Net::IsOffline(); // Zeste --offline: the attempt fails
     }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -62,7 +63,11 @@ void Module::Interface::GetConnectResult(Kernel::HLERequestContext& ctx) {
     rp.Skip(2, false); // ProcessId descriptor
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
-    rb.Push(ResultSuccess);
+    // Zeste --offline: the connection failed (the console's exact code is not measured).
+    rb.Push(Zeste::Net::IsOffline()
+                ? Result(ErrorDescription::NotFound, ErrorModule::AC, ErrorSummary::NotFound,
+                         ErrorLevel::Status)
+                : ResultSuccess);
 
     LOG_WARNING(Service_AC, "(STUBBED) called");
 }
@@ -116,7 +121,8 @@ void Module::Interface::GetStatus(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(ResultSuccess);
-    rb.Push<u32>(static_cast<u32>(Status::STATUS_INTERNET));
+    rb.Push<u32>(static_cast<u32>(Zeste::Net::IsOffline() ? Status::STATUS_DISCONNECTED
+                                                          : Status::STATUS_INTERNET));
 }
 
 void Module::Interface::GetWifiStatus(Kernel::HLERequestContext& ctx) {
@@ -124,7 +130,8 @@ void Module::Interface::GetWifiStatus(Kernel::HLERequestContext& ctx) {
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(ResultSuccess);
-    rb.Push<u32>(static_cast<u32>(WifiStatus::STATUS_CONNECTED_SLOT1));
+    rb.Push<u32>(static_cast<u32>(Zeste::Net::IsOffline() ? WifiStatus::STATUS_DISCONNECTED
+                                                          : WifiStatus::STATUS_CONNECTED_SLOT1));
 }
 
 void Module::Interface::GetInfraPriority(Kernel::HLERequestContext& ctx) {

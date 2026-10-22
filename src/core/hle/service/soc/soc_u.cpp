@@ -1218,6 +1218,15 @@ s32 SOC_U::SendToImpl(SocketHolder& holder, u32 len, u32 flags, u32 addr_len,
 #endif // _WIN32
 
     s32 ret = -1;
+    if (addr_len > 0 && Zeste::Net::IsOffline()) {
+        // Zeste --offline: no network for datagrams either.
+#ifdef _WIN32
+        if (dont_wait && was_blocking) {
+            SetSocketBlocking(holder, true);
+        }
+#endif
+        return TranslateError(ERRNO(ENETUNREACH));
+    }
     if (addr_len > 0) {
         CTRSockAddr ctr_dest_addr;
         std::memcpy(&ctr_dest_addr, dest_addr_buff,
@@ -1837,6 +1846,11 @@ void SOC_U::Connect(Kernel::HLERequestContext& ctx) {
 
     ctx.RunAsync(
         [async_data](Kernel::HLERequestContext& ctx) {
+            if (Zeste::Net::IsOffline()) { // Zeste --offline: no network
+                async_data->ret = SOCKET_ERROR_VALUE;
+                async_data->connect_error = ERRNO(ENETUNREACH);
+                return 0;
+            }
             async_data->ret = ::connect(async_data->fd_info->socket_fd,
                                         reinterpret_cast<sockaddr*>(&async_data->input_addr.first),
                                         async_data->input_addr.second);

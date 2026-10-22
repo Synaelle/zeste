@@ -302,6 +302,24 @@ ConfigureSystem::ConfigureSystem(Core::System& system_, QWidget* parent)
 
 ConfigureSystem::~ConfigureSystem() = default;
 
+int ConfigureSystem::CountryCodeFromName(const QString& name) {
+    bool is_number = false;
+    const int number = name.toInt(&is_number);
+    if (is_number) {
+        return number > 0 && number < static_cast<int>(country_names.size()) &&
+                       std::strcmp(country_names[number], "") != 0
+                   ? number
+                   : -1;
+    }
+    for (std::size_t i = 0; i < country_names.size(); ++i) {
+        if (std::strcmp(country_names[i], "") != 0 &&
+            name.compare(QString::fromLatin1(country_names[i]), Qt::CaseInsensitive) == 0) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 void ConfigureSystem::SetConfiguration() {
     enabled = !system.IsPoweredOn();
 
