@@ -229,6 +229,14 @@ static const std::array<const char*, 187> country_names = {
 ConfigureSystem::ConfigureSystem(Core::System& system_, QWidget* parent)
     : QWidget(parent), ui(std::make_unique<Ui::ConfigureSystem>()), system{system_} {
     ui->setupUi(this);
+    if (Settings::IsConfiguringGlobal()) {
+        // Zeste: the console model (New 3DS / Old 3DS) is chosen in the Hardware accuracy tab.
+        ui->toggle_new_3ds->hide();
+        auto* console_note = new QLabel(
+            tr("Console model (New 3DS / Old 3DS): Zeste > Hardware accuracy tab."));
+        console_note->setEnabled(false);
+        ui->gridLayout->addWidget(console_note, 0, 0);
+    }
     connect(ui->combo_birthmonth, qOverload<int>(&QComboBox::currentIndexChanged), this,
             &ConfigureSystem::UpdateBirthdayComboBox);
     connect(ui->combo_init_clock, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -509,7 +517,7 @@ void ConfigureSystem::ApplyConfiguration() {
         }
 
         Settings::values.init_time_offset = time_offset_days + time_offset_time;
-        Settings::values.is_new_3ds = ui->toggle_new_3ds->isChecked();
+        // is_new_3ds: written by the Zeste tab (ConfigureZeste::ApplyConfiguration).
         Settings::values.lle_applets = ui->toggle_lle_applets->isChecked();
         Settings::values.enable_required_online_lle_modules =
             ui->enable_required_online_lle_modules->isChecked();

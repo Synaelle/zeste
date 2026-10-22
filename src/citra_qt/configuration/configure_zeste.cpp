@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -35,12 +36,42 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
     auto* root = new QVBoxLayout(content);
 
     auto* intro = new QLabel(
-        tr("Zeste options make the emulator behave (or report) like a real New 3DS instead of "
-           "silently doing the right thing. Everything is off by default, so applications run "
+        tr("Zeste options make the emulator behave (or report) like the real console instead "
+           "of silently doing the right thing. Everything is off by default, so applications run "
            "exactly as in Azahar. Reports go to the log (category <i>Zeste</i>) and to the "
            "inaccuracy report written in the log folder when emulation stops."));
     intro->setWordWrap(true);
     root->addWidget(intro);
+
+    // The console model (Settings::values.is_new_3ds) is chosen here, not in the System tab.
+    auto* console_group = new QGroupBox(tr("Console"));
+    auto* console = new QVBoxLayout(console_group);
+    console_new3ds = new QRadioButton(tr("New 3DS"));
+    console->addWidget(console_new3ds);
+    auto* new3ds_note = new QLabel(tr("What Zeste is made for: every check on this page is "
+                                      "measured on, or modelled after, a New 3DS."));
+    new3ds_note->setWordWrap(true);
+    new3ds_note->setContentsMargins(20, 0, 0, 6);
+    console->addWidget(new3ds_note);
+    console_old3ds = new QRadioButton(tr("Old 3DS (experimental)"));
+    console->addWidget(console_old3ds);
+    auto* old3ds_note = new QLabel(
+        tr("Not checked against hardware yet. The New 3DS-only parts are off: the Homebrew "
+           "Launcher memory size below, and ZL / ZR / C stick in scripts. Old 3DS-only fixes come "
+           "out as pre-releases."));
+    old3ds_note->setWordWrap(true);
+    old3ds_note->setContentsMargins(20, 0, 0, 0);
+    console->addWidget(old3ds_note);
+    if (is_powered_on || !Settings::values.is_new_3ds.UsingGlobal()) {
+        console_new3ds->setEnabled(false);
+        console_old3ds->setEnabled(false);
+        auto* locked = new QLabel(is_powered_on
+                                      ? tr("Stop emulation to change the console.")
+                                      : tr("The running game's own settings choose the console."));
+        locked->setWordWrap(true);
+        console->addWidget(locked);
+    }
+    root->addWidget(console_group);
 
     auto* preset_row = new QHBoxLayout;
     auto* preset_on = new QPushButton(tr("Strict hardware mode (enable all)"));
@@ -76,11 +107,13 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
         mem, tr("CPU data cache detection"),
         tr("Report GPU/DSP/display-transfer reads of memory the CPU wrote without "
            "GSPGPU_FlushDataCache, and CPU reads of GPU-written memory without an invalidate."));
-    hw_memory_layout = MakeCheck(
-        mem, tr("Homebrew Launcher memory size for .3dsx (applies at boot)"),
+    hw_memory_layout_tooltip =
         tr(".3dsx files get the 124 MB APPLICATION region they get under the Homebrew Launcher "
            "on a New 3DS (Azahar gives them 96 MB), and draws whose vertex or index buffers the "
-           "GPU cannot reach are reported and skipped."));
+           "GPU cannot reach are reported and skipped.");
+    hw_memory_layout = MakeCheck(
+        mem, tr("Homebrew Launcher memory size for .3dsx (New 3DS only, applies at boot)"),
+        hw_memory_layout_tooltip);
     root->addWidget(mem_group);
 
     auto* sched_group = new QGroupBox(tr("Scheduling (race exposure)"));
@@ -131,14 +164,17 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
     root->addWidget(boot_note);
     root->addStretch();
 
-    // New 3DS only: the 124 MB is the Homebrew Launcher's size on a New 3DS.
-    hw_memory_layout->setEnabled(!is_powered_on && Settings::values.is_new_3ds.GetValue());
-    if (!Settings::values.is_new_3ds.GetValue()) {
-        hw_memory_layout->setToolTip(tr("New 3DS only: not available while Zeste emulates an "
-                                        "Old 3DS (System > New 3DS mode off)."));
-    }
-
+    connect(console_new3ds, &QRadioButton::toggled, this, [this] { UpdateConsoleDependent(); });
     SetConfiguration();
+}
+
+void ConfigureZeste::UpdateConsoleDependent() {
+    // New 3DS only: the 124 MB is the Homebrew Launcher's size on a New 3DS.
+    const bool new3ds = console_new3ds->isChecked();
+    hw_memory_layout->setEnabled(!is_powered_on && new3ds);
+    hw_memory_layout->setToolTip(
+        new3ds ? hw_memory_layout_tooltip
+               : tr("New 3DS only: not available while Zeste emulates an Old 3DS."));
 }
 
 ConfigureZeste::~ConfigureZeste() = default;
@@ -148,7 +184,7 @@ void ConfigureZeste::SetStrictPreset(bool enabled) {
     cpu_exceptions->setChecked(enabled);
     kernel_fixes->setChecked(enabled);
     cache_detection->setChecked(enabled);
-    if (!is_powered_on) {
+    if (hw_memory_layout->isEnabled()) {
         hw_memory_layout->setChecked(enabled);
     }
     preempt_mode->setCurrentIndex(enabled ? 2 : 0);
@@ -158,6 +194,10 @@ void ConfigureZeste::SetStrictPreset(bool enabled) {
 
 void ConfigureZeste::SetConfiguration() {
     const auto& v = Settings::values;
+    const bool new3ds = v.is_new_3ds.GetValue();
+    console_new3ds->setChecked(new3ds);
+    console_old3ds->setChecked(!new3ds);
+    UpdateConsoleDependent();
     strict_pica->setChecked(v.zeste_strict_pica.GetValue());
     cpu_exceptions->setChecked(v.zeste_cpu_exceptions.GetValue());
     kernel_fixes->setChecked(v.zeste_kernel_fixes.GetValue());
@@ -175,6 +215,9 @@ void ConfigureZeste::SetConfiguration() {
 
 void ConfigureZeste::ApplyConfiguration() {
     auto& v = Settings::values;
+    if (console_new3ds->isEnabled()) {
+        v.is_new_3ds = console_new3ds->isChecked();
+    }
     v.zeste_strict_pica = strict_pica->isChecked();
     v.zeste_cpu_exceptions = cpu_exceptions->isChecked();
     v.zeste_kernel_fixes = kernel_fixes->isChecked();

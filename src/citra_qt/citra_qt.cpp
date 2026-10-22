@@ -1829,8 +1829,9 @@ bool GMainWindow::LoadROM(const QString& filename) {
             break;
         case Core::System::ResultStatus::ErrorN3DSApplication:
             QMessageBox::critical(this, tr("Invalid system mode"),
-                                  tr("New 3DS exclusive applications cannot be loaded without "
-                                     "enabling the New 3DS mode."));
+                                  tr("New 3DS exclusive applications cannot be loaded while Zeste "
+                                     "emulates an Old 3DS (Configure > Zeste > Hardware accuracy "
+                                     "> Console)."));
             break;
         case Core::System::ResultStatus::ErrorLoader:
             QMessageBox::critical(this, tr("Generic load error"),

@@ -9,6 +9,7 @@
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QRadioButton;
 class QSpinBox;
 
 /// "Zeste / Hardware accuracy" settings tab. Every option defaults to off (Azahar behaviour).
@@ -25,9 +26,13 @@ public:
 
 private:
     void SetStrictPreset(bool enabled);
+    void UpdateConsoleDependent();
 
     bool is_powered_on;
 
+    QRadioButton* console_new3ds;
+    QRadioButton* console_old3ds;
+    QString hw_memory_layout_tooltip;
     QCheckBox* strict_pica;
     QCheckBox* cache_detection;
     QCheckBox* hw_memory_layout;
