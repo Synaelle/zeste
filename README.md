@@ -67,6 +67,14 @@ The exe ends up in `build\bin\Release\zeste.exe`. After the first time, just run
 Linux, macOS and Android aren't supported. Azahar's code for them is still there, so they may
 or may not build, but nothing is tested on them.
 
+## Contributing
+
+Contributions are welcome: bug reports, fixes, tools for testing homebrew. Anything that changes
+how Zeste emulates the console (a new check, a timing, a memory or GPU behaviour) needs data from
+real hardware first, such as a test program run on a New 3DS with its results. Zeste only models
+what has been measured on the console, so an accuracy change without hardware data won't be
+merged.
+
 ## Credits
 
 All the actual emulator work is from the Azahar and Citra developers. Zeste just adds a
