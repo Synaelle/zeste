@@ -82,6 +82,10 @@ The exe ends up in `build\bin\Release\zeste.exe`. After the first time, just run
 Linux, macOS and Android aren't supported. Azahar's code for them is still there, so they may
 or may not build, but nothing is tested on them.
 
+## Planned
+
+- Full Linux support: builds and releases for Linux, tested like the Windows ones.
+
 ## Contributing
 
 Contributions are welcome: bug reports, fixes, tools for testing homebrew. Anything that changes
