@@ -165,6 +165,7 @@ foreach(KEY IN ITEMS
     "zeste_report_log_limit"
     "zeste_write_report"
     "zeste_no_modal_dialogs"
+    "zeste_memory_warnings"
 )
     set(SETTING_KEY_LIST "${SETTING_KEY_LIST}\n\"${KEY}\",")
     set(SETTING_KEY_DEFINITIONS "${SETTING_KEY_DEFINITIONS}\nDEFINE_KEY(${KEY})")

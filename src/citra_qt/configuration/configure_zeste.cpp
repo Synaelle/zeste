@@ -157,6 +157,12 @@ ConfigureZeste::ConfigureZeste(bool is_powered_on_, QWidget* parent)
     no_modal_dialogs->setToolTip(tr("Errors and exceptions are logged and emulation stops instead "
                                     "of waiting on a dialog."));
     rep->addRow(no_modal_dialogs);
+    memory_warnings = new QCheckBox(tr("Memory warnings (malloc heap 85% and 95% full)"));
+    memory_warnings->setToolTip(
+        tr("Warn in the log, the console output and run.txt when malloc uses 85% and 95% of the "
+           "heap, which has the size the console would give it. The peaks are always in "
+           "summary.md."));
+    rep->addRow(memory_warnings);
     root->addWidget(rep_group);
 
     boot_note = new QLabel(tr("Some options only take effect when the next application boots."));
@@ -211,6 +217,7 @@ void ConfigureZeste::SetConfiguration() {
     report_log_limit->setValue(static_cast<int>(v.zeste_report_log_limit.GetValue()));
     write_report->setChecked(v.zeste_write_report.GetValue());
     no_modal_dialogs->setChecked(v.zeste_no_modal_dialogs.GetValue());
+    memory_warnings->setChecked(v.zeste_memory_warnings.GetValue());
 }
 
 void ConfigureZeste::ApplyConfiguration() {
@@ -231,6 +238,7 @@ void ConfigureZeste::ApplyConfiguration() {
     v.zeste_report_log_limit = static_cast<u32>(report_log_limit->value());
     v.zeste_write_report = write_report->isChecked();
     v.zeste_no_modal_dialogs = no_modal_dialogs->isChecked();
+    v.zeste_memory_warnings = memory_warnings->isChecked();
 }
 
 void ConfigureZeste::RetranslateUI() {

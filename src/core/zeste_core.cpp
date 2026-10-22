@@ -16,6 +16,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_cache.h"
 #include "core/zeste_core.h"
+#include "core/zeste_memory.h"
 #include "core/zeste_profiler.h"
 #include "core/zeste_summary.h"
 #include "core/zeste_sched.h"
@@ -87,6 +88,7 @@ void InstallCoreHooks(Core::System& system) {
     Cache::Reset();
     Sched::Reset();
     SystemEvents::Reset();
+    MemoryBudget::Reset();
     g_installed = true;
     SetLogLimit(Settings::values.zeste_report_log_limit.GetValue());
     SetBreakOnFirst(Settings::values.zeste_break_on_first.GetValue());

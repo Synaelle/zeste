@@ -649,6 +649,9 @@ struct Values {
     Setting<u32, true> zeste_report_log_limit{3, 1, 1000, Keys::zeste_report_log_limit};
     Setting<bool> zeste_write_report{true, Keys::zeste_write_report};
     Setting<bool> zeste_no_modal_dialogs{false, Keys::zeste_no_modal_dialogs};
+    /// Warn when the game nears the console's APPLICATION memory size (on by default: a warning,
+    /// not a check, nothing changes for the game).
+    Setting<bool> zeste_memory_warnings{true, Keys::zeste_memory_warnings};
 
     // Audio
     bool audio_muted;

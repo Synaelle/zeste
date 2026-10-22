@@ -46,5 +46,6 @@ private:
     QSpinBox* report_log_limit;
     QCheckBox* write_report;
     QCheckBox* no_modal_dialogs;
+    QCheckBox* memory_warnings;
     QLabel* boot_note;
 };

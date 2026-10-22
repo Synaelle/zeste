@@ -117,6 +117,8 @@ bool ApplyZesteOptionByName(const std::string& name) {
         values.zeste_strict_priority = true;
     } else if (name == "fs_checks") {
         values.zeste_fs_checks = true;
+    } else if (name == "no_memory_warnings") {
+        values.zeste_memory_warnings = false;
     } else if (name == "none") {
         SetZesteStrictPreset(false);
     } else {
@@ -169,6 +171,7 @@ void LogSettings() {
     log_setting("Zeste_StrictPriority", values.zeste_strict_priority.GetValue());
     log_setting("Zeste_FsChecks", values.zeste_fs_checks.GetValue());
     log_setting("Zeste_BreakOnFirst", values.zeste_break_on_first.GetValue());
+    log_setting("Zeste_MemoryWarnings", values.zeste_memory_warnings.GetValue());
     log_setting("Renderer_UseHwShader", values.use_hw_shader.GetValue());
     log_setting("Renderer_ShadersAccurateMul", values.shaders_accurate_mul.GetValue());
     log_setting("Renderer_UseShaderJit", values.use_shader_jit.GetValue());

@@ -13,6 +13,11 @@ Every Zeste release, newest first. Releases are on
 - RPC: with `--rpc-port 0`, the port picked at start is kept when a save state load restarts the
   RPC server, so clients keep reaching it.
 - The update check reads the releases on GitLab, where Zeste now lives.
+- The console (New 3DS / Old 3DS) is chosen in its own group at the top of Configure > Hardware
+  accuracy, with what each mode means. The System tab no longer has the New 3DS checkbox.
+- Memory warnings: when the game's malloc heap is 85% and then 95% full, a warning goes to the
+  log, the console output and `run.txt`. The peak is in `summary.md`. On by default, off in
+  Configure > Hardware accuracy > Reporting or with `--zeste no_memory_warnings`.
 
 ## 0.5.1 (2026-10-22)
 

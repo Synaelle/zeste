@@ -25,6 +25,7 @@
 #include "common/scm_rev.h"
 #include "core/zeste_heap.h"
 #include "core/zeste_keyboard.h"
+#include "core/zeste_memory.h"
 #include "core/zeste_profiler.h"
 #include "core/zeste_core.h"
 #include "core/zeste_system_events.h"
@@ -694,6 +695,7 @@ std::string StateJson(Core::System& system) {
 
 void OnVBlank(Core::System& system) {
     Profiler::OnVBlank(system);
+    MemoryBudget::OnVBlank(system);
     auto& s = GetState();
     if (!s.active) {
         return;

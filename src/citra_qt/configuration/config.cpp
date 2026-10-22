@@ -534,6 +534,7 @@ void QtConfig::ReadZesteValues() {
     ReadBasicSetting(Settings::values.zeste_report_log_limit);
     ReadBasicSetting(Settings::values.zeste_write_report);
     ReadBasicSetting(Settings::values.zeste_no_modal_dialogs);
+    ReadBasicSetting(Settings::values.zeste_memory_warnings);
     qt_config->endGroup();
 }
 
@@ -555,6 +556,7 @@ void QtConfig::SaveZesteValues() {
     WriteBasicSetting(Settings::values.zeste_report_log_limit);
     WriteBasicSetting(Settings::values.zeste_write_report);
     WriteBasicSetting(Settings::values.zeste_no_modal_dialogs);
+    WriteBasicSetting(Settings::values.zeste_memory_warnings);
     qt_config->endGroup();
 }
 

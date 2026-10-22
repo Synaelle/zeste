@@ -12,6 +12,7 @@
 #include "common/zeste_report.h"
 #include "core/zeste_automation.h"
 #include "core/zeste_exceptions.h"
+#include "core/zeste_memory.h"
 #include "core/zeste_profiler.h"
 #include "core/zeste_summary.h"
 
@@ -202,6 +203,10 @@ void Write(const std::string& folder, int exit_code, const std::string& reason) 
         }
     }
     out += total ? "\nDetails: zeste_report.md.\n\n" : "None (only enabled checks run).\n\n";
+
+    if (const std::string memory = MemoryBudget::SummaryText(); !memory.empty()) {
+        out += "## Memory\n\n" + memory + "\n";
+    }
 
     if (crash.valid) {
         out += fmt::format("## Crash\n\n{} at {}, faulting instruction {}\n\n", crash.type,
