@@ -40,11 +40,24 @@ macro(generate_build_info)
         endif()
         # Zeste: its version is the latest release tag (v0.4.1). A build at the tag is "0.4.1",
         # a later one "0.4.1-3-g3159690". The update check compares the numbers.
-        execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --match "v[0-9]*"
+        # A pre-release (tag v0.5.0-pre1) is only its own version when the build is exactly at
+        # that tag; any other build ignores pre-release tags and follows the last full release.
+        execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --exact-match
+                                --match "v[0-9]*-pre*"
                         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-                        OUTPUT_VARIABLE ZESTE_VERSION
+                        OUTPUT_VARIABLE ZESTE_PRE_TAG
                         OUTPUT_STRIP_TRAILING_WHITESPACE
                         ERROR_QUIET)
+        if (ZESTE_PRE_TAG)
+            set(ZESTE_VERSION "${ZESTE_PRE_TAG}")
+        else()
+            execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --match "v[0-9]*"
+                                    --exclude "v*-pre*"
+                            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                            OUTPUT_VARIABLE ZESTE_VERSION
+                            OUTPUT_STRIP_TRAILING_WHITESPACE
+                            ERROR_QUIET)
+        endif()
         string(REGEX REPLACE "^v" "" ZESTE_VERSION "${ZESTE_VERSION}")
         # A new tag alone changes no source file: reconfigure when the tags change, so a build
         # made right after tagging a release reports that release.
@@ -64,9 +77,13 @@ macro(generate_build_info)
     if (NOT ZESTE_VERSION)
         set(ZESTE_VERSION "unknown")
     endif()
-    # What the title bar shows: "0.4.5" at a release tag, "0.4.5-dev" after it, the commit
-    # without git tags.
-    if (ZESTE_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-.*)?$")
+    # What the title bar shows: "0.4.5" at a release tag, "0.4.5-dev" after it, "0.5.0-pre1" at a
+    # pre-release tag, the commit without git tags. Pre-release builds never check for updates.
+    set(ZESTE_PRERELEASE 0)
+    if (ZESTE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+-pre[0-9]+$")
+        set(ZESTE_DISPLAY_VERSION "${ZESTE_VERSION}")
+        set(ZESTE_PRERELEASE 1)
+    elseif (ZESTE_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-.*)?$")
         set(ZESTE_DISPLAY_VERSION "${CMAKE_MATCH_1}")
         if (CMAKE_MATCH_2)
             string(APPEND ZESTE_DISPLAY_VERSION "-dev")

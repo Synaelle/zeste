@@ -96,6 +96,15 @@ Result Compare(const QString& latest_tag, const QString& url) {
 } // namespace
 
 void Check(QObject* parent, bool force, std::function<void(const Result&)> done) {
+    if (Common::g_zeste_prerelease) {
+        // Pre-releases are for testing the Old 3DS side: they never offer updates.
+        LOG_INFO(Frontend, "Zeste: no update check in a pre-release build ({})",
+                 Common::g_zeste_version);
+        if (force) {
+            done(Result{.error = QStringLiteral("pre-release builds don't check for updates")});
+        }
+        return;
+    }
     if (!ParseVersion(QString::fromUtf8(Common::g_zeste_version))) {
         LOG_INFO(Frontend, "Zeste: no update check, this build's version is unknown ({})",
                  Common::g_zeste_version);

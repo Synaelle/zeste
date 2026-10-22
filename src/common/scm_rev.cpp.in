@@ -12,6 +12,7 @@
 #define BUILD_VERSION "@BUILD_VERSION@"
 #define ZESTE_VERSION "@ZESTE_VERSION@"
 #define ZESTE_DISPLAY_VERSION "@ZESTE_DISPLAY_VERSION@"
+#define ZESTE_PRERELEASE @ZESTE_PRERELEASE@
 #define BUILD_FULLNAME "@BUILD_FULLNAME@"
 #define BUILD_VARIANT "@BUILD_VARIANT@"
 #define SHADER_CACHE_VERSION "@SHADER_CACHE_VERSION@"
@@ -27,6 +28,7 @@ const char g_build_fullname[] = BUILD_FULLNAME;
 const char g_build_version[]  = BUILD_VERSION;
 const char g_zeste_version[]  = ZESTE_VERSION;
 const char g_zeste_display_version[] = ZESTE_DISPLAY_VERSION;
+const bool g_zeste_prerelease = ZESTE_PRERELEASE != 0;
 const char g_build_variant[]  = BUILD_VARIANT;
 const char g_shader_cache_version[] = SHADER_CACHE_VERSION;
 
