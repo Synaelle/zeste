@@ -78,7 +78,7 @@
     </widget>
     <widget class="QMenu" name="menu_Open_Folder">
      <property name="title">
-      <string>Open Azahar Folder</string>
+      <string>Open Zeste Folder</string>
      </property>
      <addaction name="action_Open_Citra_Folder"/>
      <addaction name="action_Open_NAND_Folder"/>
@@ -592,7 +592,7 @@
     <string>Open Log Folder</string>
    </property>
    <property name="toolTip">
-    <string>Opens the Azahar Log folder</string>
+    <string>Opens the Zeste log folder</string>
    </property>
   </action>
   <action name="action_Screen_Layout_Default">

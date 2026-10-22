@@ -1130,7 +1130,7 @@ void GMainWindow::InitializeHotkeys() {
     link_action_shortcut(ui->action_Load_File, QStringLiteral("Load File"));
     link_action_shortcut(ui->action_Load_Amiibo, QStringLiteral("Load Amiibo"));
     link_action_shortcut(ui->action_Remove_Amiibo, QStringLiteral("Remove Amiibo"));
-    link_action_shortcut(ui->action_Exit, QStringLiteral("Exit Azahar"));
+    link_action_shortcut(ui->action_Exit, QStringLiteral("Exit Zeste"));
     link_action_shortcut(ui->action_Restart, QStringLiteral("Restart Emulation"));
     link_action_shortcut(ui->action_Pause, QStringLiteral("Continue/Pause Emulation"));
     link_action_shortcut(ui->action_Stop, QStringLiteral("Stop Emulation"));
@@ -1696,7 +1696,7 @@ bool GMainWindow::LoadROM(const QString& filename) {
 
         case Core::System::ResultStatus::ErrorLoader_ErrorGbaTitle:
             QMessageBox::critical(this, tr("Unsupported application"),
-                                  tr("GBA Virtual Console is not supported by Azahar."));
+                                  tr("GBA Virtual Console is not supported by Zeste."));
             break;
 
         case Core::System::ResultStatus::ErrorArticDisconnected:
@@ -2542,7 +2542,7 @@ void GMainWindow::OnGameListCreateShortcut(u64 program_id, const std::string& ga
     if (CreateShortcutMessagesGUI(this, CREATE_SHORTCUT_MSGBOX_FULLSCREEN_PROMPT, qt_game_title)) {
         arguments = "-f " + arguments;
     }
-    const std::string comment = fmt::format("Start {:s} with the Azahar Emulator", game_title);
+    const std::string comment = fmt::format("Start {:s} with Zeste", game_title);
     const std::string categories = "Game;Emulator;Qt;";
     const std::string keywords = "3ds;Nintendo;";
 
@@ -2576,7 +2576,7 @@ void GMainWindow::OnGameListDumpRomFS(QString game_path, u64 program_id) {
                 const auto& [base, update] = future_watcher->result();
                 if (base != Loader::ResultStatus::Success) {
                     QMessageBox::critical(
-                        this, QStringLiteral("Azahar"),
+                        this, QStringLiteral("Zeste"),
                         tr("Could not dump base RomFS.\nRefer to the log for details."));
                     return;
                 }
@@ -2670,14 +2670,14 @@ void GMainWindow::OnMenuSetUpSystemFiles() {
     QVBoxLayout layout(&dialog);
 
     QLabel label_description(
-        tr("<p>Azahar needs console unique data and firmware files from a real console to be "
+        tr("<p>Zeste needs console unique data and firmware files from a real console to be "
            "able to use some of its features.<br>Such files and data can be set up with the <a "
            "href=https://github.com/azahar-emu/ArticSetupTool>Azahar "
            "Artic Setup Tool</a><br>Notes:<ul><li><b>This operation will install console unique "
-           "data to Azahar, do not share your user or nand folders<br>after performing the setup "
-           "process!</b></li><li>While doing the setup process, Azahar will link to the console "
+           "data to Zeste, do not share your user or nand folders<br>after performing the setup "
+           "process!</b></li><li>While doing the setup process, Zeste will link to the console "
            "running the setup tool. You can unlink the<br>console later from the System tab in the "
-           "emulator configuration menu.</li><li>Do not go online with both Azahar and your 3DS "
+           "emulator configuration menu.</li><li>Do not go online with both Zeste and your 3DS "
            "console at the same time after setting up system files,<br>as it could cause "
            "issues.</li><li>Old 3DS setup is needed for the New 3DS setup to work (doing both "
            "setup modes is recommended).</li><li>Both setup modes will work regardless of the "
@@ -2953,10 +2953,10 @@ void GMainWindow::UninstallTitles(
     future_watcher.waitForFinished();
 
     if (failed) {
-        QMessageBox::critical(this, QStringLiteral("Azahar"),
+        QMessageBox::critical(this, QStringLiteral("Zeste"),
                               tr("Failed to uninstall '%1'.").arg(failed_name));
     } else if (!future_watcher.isCanceled()) {
-        QMessageBox::information(this, QStringLiteral("Azahar"),
+        QMessageBox::information(this, QStringLiteral("Zeste"),
                                  tr("Successfully uninstalled '%1'.").arg(first_name));
         emit InstalledTitlesChanged();
     }
@@ -3999,7 +3999,7 @@ void GMainWindow::StartVideoDumping(const QString& path) {
         system.RegisterVideoDumper(dumper);
     } else {
         QMessageBox::critical(
-            this, QStringLiteral("Azahar"),
+            this, QStringLiteral("Zeste"),
             tr("Could not start video dumping.<br>Please ensure that the video encoder is "
                "configured correctly.<br>Refer to the log for details."));
         ui->action_Dump_Video->setChecked(false);
@@ -4447,13 +4447,10 @@ void GMainWindow::OnCoreError(Core::System::ResultStatus result, std::string det
         can_continue = false;
     } else if (result == Core::System::ResultStatus::ErrorSavestateBuildMismatch) {
         title = tr("Savestate version mismatch");
-        message = tr("Could not load savestate because it was created on a different Azahar "
-                     "version:<br/>"
-                     "<b>Azahar %1</b>.<br/><br/>Please read our blog entry <a "
-                     "href='https://azahar-emu.org/blog/understanding-save-states/'>understanding "
-                     "savestates</a> for more information.<br/><br/>To recover your progress, "
-                     "downgrade to <b>Azahar %1</b>, load this savestate and use the application's "
-                     "built-in save functionality.")
+        message = tr("Could not load the savestate: it was made with a different Zeste build "
+                     "(<b>%1</b>). A savestate only loads in the build that made it.<br/><br/>To "
+                     "keep your progress, open that build of Zeste, load the savestate there and "
+                     "save in the game itself.")
                       .arg(QString::fromStdString(details));
         error_severity_icon = QMessageBox::Icon::Critical;
     } else {
@@ -4608,7 +4605,7 @@ bool GMainWindow::ConfirmChangeGame() {
     }
 
     auto answer = QMessageBox::question(
-        this, QStringLiteral("Azahar"),
+        this, QStringLiteral("Zeste"),
         tr("The application is still running. Would you like to stop emulation?"),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     return answer != QMessageBox::No;
