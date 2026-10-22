@@ -5,6 +5,8 @@ Every Zeste release, newest first. Releases are on
 
 ## Unreleased
 
+## 0.5.3 (2026-10-22)
+
 - Fix: the hidden Enhancements tab (and the per-game Cheats tab) showed behind the settings.
 
 ## 0.5.2 (2026-10-22)
