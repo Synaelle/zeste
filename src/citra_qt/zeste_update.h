@@ -3,9 +3,9 @@
 // Refer to the misc/licenses/gplv2.txt file included.
 
 // Zeste update check: compares this build's version (Common::g_zeste_version, from the latest
-// release tag) with the latest release of github.com/Synaelle/zeste. Headless test loops start
-// Zeste many times and GitHub limits unauthenticated API calls, so the answer is cached in the
-// user folder (zeste_update.txt) and GitHub is asked at most every 6 hours.
+// release tag) with the latest release of gitlab.com/Synaelle/zeste. Headless test loops start
+// Zeste many times and the server limits unauthenticated API calls, so the answer is cached in
+// the user folder (zeste_update.txt) and GitLab is asked at most every 6 hours.
 
 #pragma once
 

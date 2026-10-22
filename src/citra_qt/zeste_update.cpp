@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <optional>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -20,8 +21,10 @@ namespace Zeste::Update {
 
 namespace {
 
-constexpr char LatestReleaseApi[] = "https://api.github.com/repos/Synaelle/zeste/releases/latest";
-constexpr char ReleasesPage[] = "https://github.com/Synaelle/zeste/releases/latest";
+// GitLab lists releases newest first; pre-releases (vX.Y.Z-preN) are skipped below.
+constexpr char ReleasesApi[] =
+    "https://gitlab.com/api/v4/projects/Synaelle%2Fzeste/releases?per_page=20";
+constexpr char ReleasesPage[] = "https://gitlab.com/Synaelle/zeste/-/releases";
 constexpr std::int64_t CacheSeconds = 6 * 60 * 60;
 
 /// "0.4.1", "v0.4.1" or "0.4.1-3-g3159690" -> {0, 4, 1}; nullopt if it does not start so.
@@ -122,10 +125,10 @@ void Check(QObject* parent, bool force, std::function<void(const Result&)> done)
     }
 
     auto* manager = new QNetworkAccessManager(parent);
-    QNetworkRequest request{QUrl(QString::fromLatin1(LatestReleaseApi))};
+    QNetworkRequest request{QUrl(QString::fromLatin1(ReleasesApi))};
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("Zeste/%1").arg(QString::fromUtf8(Common::g_zeste_version)));
-    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("Accept", "application/json");
     request.setTransferTimeout(10000);
     QNetworkReply* reply = manager->get(request);
     QObject::connect(reply, &QNetworkReply::finished, manager, [manager, reply, done] {
@@ -137,13 +140,27 @@ void Check(QObject* parent, bool force, std::function<void(const Result&)> done)
             done(Result{.error = reply->errorString()});
             return;
         }
-        const QJsonObject json = QJsonDocument::fromJson(reply->readAll()).object();
+        // The newest full release (pre-releases are for the Old 3DS side only).
+        QJsonObject json;
+        for (const QJsonValue& value : QJsonDocument::fromJson(reply->readAll()).array()) {
+            const QJsonObject release = value.toObject();
+            if (!release.value(QStringLiteral("tag_name")).toString().contains(
+                    QStringLiteral("-pre")) &&
+                !release.value(QStringLiteral("upcoming_release")).toBool()) {
+                json = release;
+                break;
+            }
+        }
         const QString tag = json.value(QStringLiteral("tag_name")).toString();
         if (tag.isEmpty()) {
-            done(Result{.error = QStringLiteral("unexpected answer from GitHub")});
+            done(Result{.error = QStringLiteral("unexpected answer from GitLab")});
             return;
         }
-        const Cache fresh{Now(), tag, json.value(QStringLiteral("html_url")).toString()};
+        const QString page = json.value(QStringLiteral("_links"))
+                                 .toObject()
+                                 .value(QStringLiteral("self"))
+                                 .toString();
+        const Cache fresh{Now(), tag, page};
         WriteCache(fresh);
         const Result result = Compare(fresh.latest, fresh.url);
         LOG_INFO(Frontend, "Zeste: latest release {}, this build {}{}", tag.toStdString(),

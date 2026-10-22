@@ -823,7 +823,7 @@ GMainWindow::GMainWindow(Core::System& system_)
     }
 #endif
 
-    // Zeste: compares with the latest release on GitHub (at most every 6 hours, cached).
+    // Zeste: compares with the latest release on GitLab (at most every 6 hours, cached).
     if (UISettings::values.check_for_update_on_start) {
         ZesteCheckForUpdates(false);
     }
