@@ -7,8 +7,8 @@ Every Zeste release, newest first. Releases are on
 
 ## 0.5.2 (2026-10-22)
 
-- New status bar look: no frame around each item, two faint dividers between the groups
-  (Zeste buttons, performance, multiplayer), even spacing and a soft hover on the buttons.
+- New status bar look: no frame around each item, a faint divider between the Zeste buttons and
+  the performance figures, even spacing and a soft hover on the buttons.
 - No confirmation when quitting while a game runs. The option is still in Configure > General.
 - `--offline` also turns the console's Wi-Fi state to "not connected": the HOME Menu no longer
   shows "Internet", and `osGetWifiStrength()` returns 0.
