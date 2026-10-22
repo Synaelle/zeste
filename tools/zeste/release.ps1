@@ -26,14 +26,14 @@ $VcVars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Aux
 
 function Step($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function Fail($text) { throw "release: $text" }
-function Git { & git @args; if ($LASTEXITCODE -ne 0) { Fail "git $args failed" } }
+function Invoke-Git { & git.exe @args; if ($LASTEXITCODE -ne 0) { Fail "git $args failed" } }
 
 if ($Version -notmatch "^\d+\.\d+\.\d+(-pre\d+)?$") { Fail "version must look like 1.2.3 or 1.2.3-pre1" }
 
 Step "Checks"
 if ((git rev-parse --abbrev-ref HEAD) -ne "main") { Fail "not on main" }
 if (git status --porcelain) { Fail "the working tree has changes: commit or stash them first" }
-Git fetch -q origin
+Invoke-Git fetch -q origin
 if (-not $DryRun -and (git rev-parse HEAD) -ne (git rev-parse origin/main)) { Fail "main and origin/main differ: push or pull first" }
 if (git tag -l $Tag) { Fail "tag $Tag already exists" }
 if (-not $DryRun) {
@@ -56,17 +56,17 @@ if ($NotesFile) { Copy-Item $NotesFile $notesPath -Force } else { Set-Content $n
 Write-Host (Get-Content $notesPath -Raw)
 if ($unreleased -and -not $DryRun) {
     [IO.File]::WriteAllText("$Root\CHANGELOG.md", $changelog)
-    Git add CHANGELOG.md
-    Git commit -q -m "Changelog: $Version"
-    Git push -q origin main
+    Invoke-Git add CHANGELOG.md
+    Invoke-Git commit -q -m "Changelog: $Version"
+    Invoke-Git push -q origin main
 }
 
 Step "Tag $Tag"
 if (-not $DryRun) {
-    Git tag $Tag
-    Git push -q origin $Tag
+    Invoke-Git tag $Tag
+    Invoke-Git push -q origin $Tag
 } else {
-    Git tag $Tag  # local only, removed at the end of a dry run
+    Invoke-Git tag $Tag  # local only, removed at the end of a dry run
 }
 
 try {
