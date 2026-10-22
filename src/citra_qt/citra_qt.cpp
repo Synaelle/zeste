@@ -291,6 +291,30 @@ static int GetMajorVersion(const std::string& version) {
 }
 #endif
 
+/// Zeste: status bar look, added after every theme. Items get no frame (the default style draws a
+/// sunken one around each), groups are split by thin dividers, the buttons get a soft hover.
+static QString ZesteStatusBarStyle() {
+    return QStringLiteral(R"(
+QStatusBar::item { border: none; }
+QStatusBar QLabel { padding: 0px 6px; }
+QFrame#ZesteStatusDivider { background-color: rgba(128, 128, 128, 90); border: none; }
+QPushButton#TogglableStatusBarButton, QPushButton#GraphicsAPIStatusBarButton {
+    border: none; border-radius: 3px; padding: 2px 8px; margin: 0px 1px;
+}
+QPushButton#TogglableStatusBarButton:hover, QPushButton#GraphicsAPIStatusBarButton:hover {
+    border: none; background-color: rgba(128, 128, 128, 45);
+}
+)");
+}
+
+static QFrame* ZesteStatusDivider(QWidget* parent) {
+    auto* divider = new QFrame(parent);
+    divider->setObjectName(QStringLiteral("ZesteStatusDivider"));
+    divider->setFrameShape(QFrame::NoFrame);
+    divider->setFixedSize(1, 14);
+    return divider;
+}
+
 /// Zeste headless: the widget behaves as shown (GL contexts, layouts, screenshots) but never
 /// reaches the screen, and never takes the focus or the foreground (an invisible window in the
 /// foreground made the taskbar appear over full-screen applications).
@@ -1010,15 +1034,12 @@ void GMainWindow::InitializeWidgets() {
         volume_popup->setGeometry(QRect(bottomLeft, QSize(rect.width(), rect.height())));
     });
     statusBar()->insertPermanentWidget(1, volume_button);
+    // Zeste: [STRICT VOLUME API] | message ... [speed fps frame] | [multiplayer LED]
+    statusBar()->insertPermanentWidget(3, ZesteStatusDivider(this));
 
+    statusBar()->addPermanentWidget(ZesteStatusDivider(this));
     statusBar()->addPermanentWidget(multiplayer_state->GetStatusText());
     statusBar()->addPermanentWidget(multiplayer_state->GetStatusIcon());
-
-    QFrame* sep = new QFrame(this);
-    sep->setFrameShape(QFrame::VLine);
-    sep->setFrameShadow(QFrame::Sunken);
-    sep->setFixedHeight(16);
-    statusBar()->addPermanentWidget(sep);
 
     notification_led = new LedWidget();
     notification_led->setToolTip(tr("Emulated notification LED"));
@@ -1030,8 +1051,7 @@ void GMainWindow::InitializeWidgets() {
 
     statusBar()->setVisible(true);
 
-    // Removes an ugly inner border from the status bar widgets under Linux
-    setStyleSheet(QStringLiteral("QStatusBar::item{border: none;}"));
+    // Item frames are removed by ZesteStatusBarStyle (part of the app stylesheet).
 
     QActionGroup* actionGroup_ScreenLayouts = new QActionGroup(this);
     actionGroup_ScreenLayouts->addAction(ui->action_Screen_Layout_Default);
@@ -4764,13 +4784,11 @@ void GMainWindow::UpdateUITheme() {
         QFile f(theme_uri);
         if (f.open(QFile::ReadOnly | QFile::Text)) {
             QTextStream ts(&f);
-            qApp->setStyleSheet(ts.readAll());
-            setStyleSheet(ts.readAll());
+            qApp->setStyleSheet(ts.readAll() + ZesteStatusBarStyle());
         } else {
             LOG_ERROR(Frontend,
                       "Unable to open default stylesheet, falling back to empty stylesheet");
-            qApp->setStyleSheet({});
-            setStyleSheet({});
+            qApp->setStyleSheet(ZesteStatusBarStyle());
         }
         theme_paths.append(default_theme_path);
         QIcon::setThemeName(default_theme);
@@ -4779,8 +4797,7 @@ void GMainWindow::UpdateUITheme() {
         QFile f(theme_uri);
         if (f.open(QFile::ReadOnly | QFile::Text)) {
             QTextStream ts(&f);
-            qApp->setStyleSheet(ts.readAll());
-            setStyleSheet(ts.readAll());
+            qApp->setStyleSheet(ts.readAll() + ZesteStatusBarStyle());
         } else {
             LOG_ERROR(Frontend, "Unable to set style, stylesheet file not found");
         }
