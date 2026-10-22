@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include <atomic>
 #include <deque>
 #include <iostream>
 #include <mutex>
@@ -20,6 +21,8 @@ struct Answer {
     std::string text;
 };
 
+std::atomic<bool> g_waiting{false};
+
 void Print(const std::string& line) {
     LOG_INFO(Zeste, "{}", line);
     std::cout << line << std::endl;
@@ -31,6 +34,7 @@ public:
         SoftwareKeyboard::Execute(config_);
         std::scoped_lock lock{mutex};
         waiting = true;
+        g_waiting = true;
         Print(fmt::format(
             "Zeste keyboard: the game asks for text{}{}; answer with \"keyboard <text>\"{}",
             config.hint_text.empty() ? "" : fmt::format(" (hint \"{}\")", config.hint_text),
@@ -84,6 +88,7 @@ private:
                 continue;
             }
             waiting = false;
+            g_waiting = false;
             Print(answer.cancel ? std::string{"Zeste keyboard: Cancel"}
                                 : fmt::format("Zeste keyboard: typed \"{}\"", answer.text));
         }
@@ -133,6 +138,10 @@ void Cancel() {
     } else {
         LOG_WARNING(Zeste, "keyboard-cancel: only available in headless mode");
     }
+}
+
+bool IsWaiting() {
+    return g_waiting;
 }
 
 } // namespace Zeste::Keyboard

@@ -27,4 +27,7 @@ void RegisterHeadless(Core::System& system);
 void Type(const std::string& text);
 void Cancel();
 
+/// True while the game waits for an answer to a keyboard request (headless).
+bool IsWaiting();
+
 } // namespace Zeste::Keyboard

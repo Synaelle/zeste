@@ -47,6 +47,9 @@
 #pragma once
 
 #include <functional>
+#include <future>
+#include <memory>
+#include <utility>
 #include <string>
 #include <vector>
 #include "common/common_types.h"
@@ -101,6 +104,20 @@ bool LoadScriptText(const std::string& text, const std::string& name = "command 
 /// Queues a single command for the next VBlank (RPC / debugging). Returns a parse error message,
 /// or an empty string on success.
 std::string QueueCommand(const std::string& line);
+
+/// Same, and `done` gets the command's result ("ok", or what went wrong) once it has run.
+std::string QueueCommand(const std::string& line,
+                         std::shared_ptr<std::promise<std::string>> done);
+
+/// The game's debug output (svcOutputDebugString) from line `index` on (the first line of a run
+/// is 0). Returns the index of the first line returned (later than `index` when older lines were
+/// dropped: the last 2000 are kept) and the lines. Also written live to game_output.txt in the
+/// run folder.
+std::pair<u64, std::vector<std::string>> GameOutputSince(u64 index);
+
+/// The run's state as one line of JSON: frame, paused, title, console, keyboard waiting,
+/// wait-log, exit reason, run folder, version.
+std::string StateJson(Core::System& system);
 
 /// Called by the GPU at every emulated VBlank (emulation thread).
 void OnVBlank(Core::System& system);

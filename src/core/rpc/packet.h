@@ -22,9 +22,18 @@ enum class PacketType : u32 {
     ReadScreenshot = 6,
     GetPerfStats = 7,
     /// Zeste: queue an automation command (text, see core/zeste_automation.h) for the next
-    /// VBlank. Data: u32 length, u32 reserved, then the command text. Reply: u32 status
-    /// (0 = queued, 1 = parse error) followed by the error text.
+    /// VBlank. Data: u32 length, u32 flags, then the command text. Reply: u32 status
+    /// (0 = queued, 1 = parse error) followed by the error text. With flag 1 (wait), the reply
+    /// comes once the command has run: status 0 and its result ("ok", or what went wrong), or
+    /// status 2 if it has not run within 15 s (emulation paused or stopped).
     ZesteCommand = 0x100,
+    /// Zeste: the run's state as JSON text (frame, paused, title, console, keyboard waiting,
+    /// wait-log, game output line count, exit reason, run folder, version). Data: two u32 (0).
+    ZesteState = 0x101,
+    /// Zeste: the game's debug output from line `index` (u32) on. Reply: u32 first index
+    /// returned, u32 index after the last line returned, then the lines separated by newlines
+    /// (as many as fit; ask again from the second number for the rest).
+    ZesteOutput = 0x102,
 };
 
 struct PacketHeader {

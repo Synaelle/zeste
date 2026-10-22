@@ -22,6 +22,7 @@
 #include "core/memory.h"
 #include "common/settings.h"
 #include "core/zeste_automation.h"
+#include "common/scm_rev.h"
 #include "core/zeste_heap.h"
 #include "core/zeste_keyboard.h"
 #include "core/zeste_profiler.h"
@@ -41,6 +42,7 @@ struct Command {
     bool immediate = false; ///< Queued live: runs at the next VBlank whatever the frame.
     std::vector<std::string> args;
     int line = 0;
+    std::shared_ptr<std::promise<std::string>> done; ///< gets the result once run (RPC)
 };
 
 struct HeldInput {
@@ -58,12 +60,16 @@ struct Wait {
     u64 started_frame = 0;
     u64 deadline_frame = 0; ///< 0 = no timeout
     bool seen = false;
+    bool quit_on_timeout = true; ///< on-timeout=continue: log it and go on
 };
 
 struct State {
     std::mutex mutex;
     Wait wait;
     std::deque<std::string> debug_lines; ///< Last lines of the game's debug output
+    std::deque<std::string> output;      ///< The game's debug output, the last 2000 lines
+    u64 output_first = 0;                ///< Index of output.front() in the run
+    std::string last_result = "ok";      ///< Result of the command being executed
     std::vector<std::string> screenshots;
     std::string exit_reason;
     std::deque<Command> commands;
@@ -82,12 +88,29 @@ State& GetState() {
     return state;
 }
 
+/// Splits on whitespace. "double quotes" keep spaces in one argument (paths with spaces).
 std::vector<std::string> Tokenize(const std::string& line) {
     std::vector<std::string> out;
-    std::istringstream stream{line};
     std::string token;
-    while (stream >> token) {
-        out.push_back(token);
+    bool in_token = false;
+    bool quoted = false;
+    for (const char c : line) {
+        if (c == '"') {
+            quoted = !quoted;
+            in_token = true;
+        } else if (!quoted && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+            if (in_token) {
+                out.push_back(std::move(token));
+                token.clear();
+                in_token = false;
+            }
+        } else {
+            token.push_back(c);
+            in_token = true;
+        }
+    }
+    if (in_token) {
+        out.push_back(std::move(token));
     }
     return out;
 }
@@ -203,6 +226,7 @@ std::string ValidateCommand(const std::vector<std::string>& args) {
         {"report", 1},    {"log", 1},       {"quit", 1},      {"keyboard", 1},
         {"keyboard-cancel", 1}, {"wait-log", 2}, {"save-state", 2}, {"load-state", 2},
         {"speed", 2},     {"heap-report", 2}, {"profile-start", 1}, {"profile-stop", 1},
+        {"wait-cancel", 1},
     };
     if (args.empty()) {
         return "empty command";
@@ -313,10 +337,13 @@ void Execute(Core::System& system, const Command& command) {
         if (which == "both") {
             const auto dot = path.rfind('.');
             const std::string stem = dot == std::string::npos ? path : path.substr(0, dot);
-            DumpLcd(system, 0, stem + "_top.png");
-            DumpLcd(system, 1, stem + "_bottom.png");
-        } else {
-            DumpLcd(system, which == "bottom" ? 1 : 0, path);
+            const bool top = DumpLcd(system, 0, stem + "_top.png");
+            const bool bottom = DumpLcd(system, 1, stem + "_bottom.png");
+            if (!top || !bottom) {
+                s.last_result = "failed: the screen has no framebuffer yet (see the log)";
+            }
+        } else if (!DumpLcd(system, which == "bottom" ? 1 : 0, path)) {
+            s.last_result = "failed: the screen has no framebuffer yet (see the log)";
         }
     } else if (verb == "dump-mem") {
         const VAddr addr = static_cast<VAddr>(ParseNumber(args[1]));
@@ -367,6 +394,10 @@ void Execute(Core::System& system, const Command& command) {
         for (; first < args.size(); ++first) {
             if (args[first].rfind("timeout=", 0) == 0) {
                 wait.deadline_frame = frame + ParseFrames(args[first].substr(8), 0);
+            } else if (args[first] == "on-timeout=continue") {
+                wait.quit_on_timeout = false;
+            } else if (args[first] == "on-timeout=quit") {
+                wait.quit_on_timeout = true;
             } else if (args[first].rfind("file=", 0) == 0) {
                 wait.file = HostPath(args[first].substr(5));
                 // Only text written from now on counts.
@@ -380,7 +411,16 @@ void Execute(Core::System& system, const Command& command) {
                  wait.file.empty() ? std::string{"the debug output"} : wait.file, frame);
         std::scoped_lock lock{s.mutex};
         s.wait = std::move(wait);
+    } else if (verb == "wait-cancel") {
+        std::scoped_lock lock{s.mutex};
+        if (s.wait.active) {
+            LOG_INFO(Zeste, "automation: wait-log for \"{}\" cancelled", s.wait.text);
+            s.wait = {};
+        } else {
+            s.last_result = "no wait-log was pending";
+        }
     } else if (verb == "save-state" || verb == "load-state") {
+        s.last_result = "requested (done by the emulation loop, see the log)";
         const std::string path = HostPath(args[1]);
         LOG_INFO(Zeste, "automation: {} {}", verb, path);
         system.SetSaveStatePathOverride(path);
@@ -454,10 +494,15 @@ void CheckWait(Core::System& system, u64 frame) {
     }
     if (wait.deadline_frame != 0 && frame >= wait.deadline_frame) {
         const std::string text = wait.text;
+        const bool quit = wait.quit_on_timeout;
         wait = {};
         lock.unlock();
         LOG_ERROR(Zeste, "automation: wait-log timed out waiting for \"{}\"", text);
         std::cout << "Zeste wait-log: timed out waiting for \"" << text << "\"" << std::endl;
+        if (!quit) {
+            // on-timeout=continue: the script goes on (later commands were not shifted).
+            return;
+        }
         Quit(system, 3,
              fmt::format("wait-log timed out at frame {} waiting for \"{}\"", frame, text));
     }
@@ -471,6 +516,23 @@ void OnDebugOutput(const std::string& text) {
     s.debug_lines.push_back(text);
     while (s.debug_lines.size() > 40) {
         s.debug_lines.pop_front();
+    }
+    s.output.push_back(text);
+    while (s.output.size() > 2000) {
+        s.output.pop_front();
+        ++s.output_first;
+    }
+    // Written live, so a run's game output can be followed while it runs.
+    if (!Run::Folder().empty()) {
+        static FileUtil::IOFile file;
+        if (!file.IsOpen()) {
+            file = FileUtil::IOFile(Run::Folder() + "game_output.txt", "ab");
+        }
+        if (file.IsOpen()) {
+            const std::string line = text.ends_with('\n') ? text : text + "\n";
+            file.WriteBytes(line.data(), line.size());
+            file.Flush();
+        }
     }
     if (s.wait.active && s.wait.file.empty() && text.find(s.wait.text) != std::string::npos) {
         s.wait.seen = true;
@@ -554,15 +616,80 @@ bool LoadScriptText(const std::string& script, const std::string& path) {
 }
 
 std::string QueueCommand(const std::string& line) {
+    return QueueCommand(line, nullptr);
+}
+
+std::string QueueCommand(const std::string& line,
+                         std::shared_ptr<std::promise<std::string>> done) {
     auto tokens = Tokenize(line);
     if (const std::string error = ValidateCommand(tokens); !error.empty()) {
         return error;
     }
     auto& s = GetState();
     std::scoped_lock lock{s.mutex};
-    s.commands.push_front({0, true, std::move(tokens), 0});
+    // Live commands run in the order they were sent, before the script's own.
+    auto it = s.commands.begin();
+    while (it != s.commands.end() && it->immediate) {
+        ++it;
+    }
+    s.commands.insert(it, {0, true, std::move(tokens), 0, std::move(done)});
     s.active = true;
     return {};
+}
+
+std::pair<u64, std::vector<std::string>> GameOutputSince(u64 index) {
+    auto& s = GetState();
+    std::scoped_lock lock{s.mutex};
+    const u64 first = std::max(index, s.output_first);
+    std::vector<std::string> lines;
+    for (u64 i = first; i < s.output_first + s.output.size(); ++i) {
+        lines.push_back(s.output[static_cast<std::size_t>(i - s.output_first)]);
+    }
+    return {first, std::move(lines)};
+}
+
+std::string StateJson(Core::System& system) {
+    const auto escape = [](const std::string& text) {
+        std::string out;
+        for (const char c : text) {
+            if (c == '"' || c == '\\') {
+                out.push_back('\\');
+                out.push_back(c);
+            } else if (static_cast<unsigned char>(c) < 0x20) {
+                out += fmt::format("\\u{:04x}", static_cast<unsigned char>(c));
+            } else {
+                out.push_back(c);
+            }
+        }
+        return out;
+    };
+    auto& s = GetState();
+    std::string wait_text;
+    u64 output_next = 0;
+    std::string exit_reason;
+    {
+        std::scoped_lock lock{s.mutex};
+        wait_text = s.wait.active ? s.wait.text : std::string{};
+        output_next = s.output_first + s.output.size();
+        exit_reason = s.exit_reason;
+    }
+    const bool powered = system.IsPoweredOn();
+    u64 title_id = 0;
+    if (powered && system.HasKernel()) {
+        if (const auto process = system.Kernel().GetCurrentProcess()) {
+            title_id = process->codeset ? process->codeset->program_id : 0;
+        }
+    }
+    return fmt::format(
+        "{{\"version\":\"{}\",\"console\":\"{}\",\"powered_on\":{},\"paused\":{},"
+        "\"frame\":{},\"title_id\":\"{:016X}\",\"keyboard_waiting\":{},"
+        "\"wait_log\":\"{}\",\"game_output_lines\":{},\"exit_reason\":\"{}\","
+        "\"run_folder\":\"{}\"}}",
+        escape(Common::g_zeste_display_version),
+        Settings::values.is_new_3ds.GetValue() ? "new3ds" : "old3ds", powered,
+        powered && system.frame_limiter.IsFrameAdvancing(), powered ? CurrentFrame(system) : 0,
+        title_id, Keyboard::IsWaiting(), escape(wait_text), output_next, escape(exit_reason),
+        escape(Run::Folder()));
 }
 
 void OnVBlank(Core::System& system) {
@@ -586,7 +713,11 @@ void OnVBlank(Core::System& system) {
         }
     }
     for (const auto& command : due) {
+        s.last_result = "ok";
         Execute(system, command);
+        if (command.done) {
+            command.done->set_value(s.last_result);
+        }
     }
     SystemEvents::OnVBlank(system);
 

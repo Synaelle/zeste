@@ -2,6 +2,7 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
+#include <atomic>
 #include <thread>
 #include <boost/asio.hpp>
 #include "common/common_types.h"
@@ -11,13 +12,27 @@
 
 namespace Core::RPC {
 
+namespace {
+u16 g_requested_port = 45987;
+std::atomic<u16> g_bound_port{0};
+} // namespace
+
+void SetUdpPort(u16 port) {
+    g_requested_port = port;
+}
+
+u16 BoundUdpPort() {
+    return g_bound_port;
+}
+
 class UDPServer::Impl {
 public:
     explicit Impl(std::function<void(std::unique_ptr<Packet>)> new_request_callback)
-        // Use a random high port
-        // TODO: Make configurable or increment port number on failure
-        : socket(io_context, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 45987)),
+        // Zeste: the port is set with --rpc-port (default 45987, 0 = a free one)
+        : socket(io_context,
+                 boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), g_requested_port)),
           new_request_callback(std::move(new_request_callback)) {
+        g_bound_port = socket.local_endpoint().port();
 
         EnsureBufferSize<boost::asio::socket_base::send_buffer_size>(MAX_PACKET_SIZE * 2);
         EnsureBufferSize<boost::asio::socket_base::receive_buffer_size>(MAX_PACKET_SIZE * 4);

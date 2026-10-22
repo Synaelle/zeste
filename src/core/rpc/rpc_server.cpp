@@ -312,6 +312,8 @@ bool RPCServer::ValidatePacket(const PacketHeader& packet_header) {
         case PacketType::ReadScreenshot:
         case PacketType::GetPerfStats:
         case PacketType::ZesteCommand:
+        case PacketType::ZesteState:
+        case PacketType::ZesteOutput:
             if (packet_header.packet_size >= (sizeof(u32) * 2)) {
                 return true;
             }
@@ -330,6 +332,9 @@ bool RPCServer::IsCoreRequest(PacketType packet_type) {
         return false;
     case PacketType::ZesteCommand:
         // Only queues the command; the automation engine runs it on the emulation thread
+    case PacketType::ZesteState:
+    case PacketType::ZesteOutput:
+        // Read state the automation engine keeps under its own lock
         return false;
     default:
         return true;
@@ -386,18 +391,59 @@ void RPCServer::DispatchRequest(std::unique_ptr<Packet> request_packet) {
     case PacketType::ZesteCommand:
         if (arg1 > 0 && arg1 <= request_packet->GetPacketDataSize() - (sizeof(u32) * 2)) {
             const auto text = packet_data.subspan(sizeof(u32) * 2, arg1);
-            const std::string error = Zeste::Automation::QueueCommand(
-                std::string(reinterpret_cast<const char*>(text.data()), text.size()));
-            const u32 status = error.empty() ? 0 : 1;
+            const bool wait = (arg2 & 1) != 0;
+            auto done = wait ? std::make_shared<std::promise<std::string>>() : nullptr;
+            auto future = done ? done->get_future() : std::future<std::string>{};
+            std::string message = Zeste::Automation::QueueCommand(
+                std::string(reinterpret_cast<const char*>(text.data()), text.size()), done);
+            u32 status = message.empty() ? 0 : 1;
+            if (status == 0 && wait) {
+                if (future.wait_for(std::chrono::seconds(15)) == std::future_status::ready) {
+                    message = future.get();
+                } else {
+                    status = 2;
+                    message = "not run within 15 s (emulation paused or stopped?); it stays queued";
+                }
+            }
             auto reply = request_packet->GetPacketData();
             std::memcpy(reply.data(), &status, sizeof(status));
-            const std::size_t length = std::min<std::size_t>(error.size(), reply.size() - 4);
-            std::memcpy(reply.data() + sizeof(status), error.data(), length);
+            const std::size_t length = std::min<std::size_t>(message.size(), reply.size() - 4);
+            std::memcpy(reply.data() + sizeof(status), message.data(), length);
             request_packet->SetPacketDataSize(static_cast<u32>(sizeof(status) + length));
             request_packet->SendReply();
             return;
         }
         break;
+    case PacketType::ZesteState: {
+        const std::string json = Zeste::Automation::StateJson(system);
+        auto reply = request_packet->GetPacketData();
+        const std::size_t length = std::min<std::size_t>(json.size(), reply.size());
+        std::memcpy(reply.data(), json.data(), length);
+        request_packet->SetPacketDataSize(static_cast<u32>(length));
+        request_packet->SendReply();
+        return;
+    }
+    case PacketType::ZesteOutput: {
+        const auto [first, lines] = Zeste::Automation::GameOutputSince(arg1);
+        auto reply = request_packet->GetPacketData();
+        std::size_t pos = sizeof(u32) * 2;
+        u32 next = static_cast<u32>(first);
+        for (const auto& line : lines) {
+            if (pos + line.size() + 1 > reply.size()) {
+                break;
+            }
+            std::memcpy(reply.data() + pos, line.data(), line.size());
+            pos += line.size();
+            reply[pos++] = '\n';
+            ++next;
+        }
+        const u32 first32 = static_cast<u32>(first);
+        std::memcpy(reply.data(), &first32, sizeof(first32));
+        std::memcpy(reply.data() + sizeof(u32), &next, sizeof(next));
+        request_packet->SetPacketDataSize(static_cast<u32>(pos));
+        request_packet->SendReply();
+        return;
+    }
     default:
         break;
     }

@@ -6,10 +6,16 @@
 
 #include <functional>
 #include <memory>
+#include "common/common_types.h"
 
 namespace Core::RPC {
 
 class Packet;
+
+/// Port the RPC server binds next (45987 by default, 0 = a free port picked by the system).
+void SetUdpPort(u16 port);
+/// Port the running RPC server is bound to (0 when none).
+u16 BoundUdpPort();
 
 class UDPServer {
 public:

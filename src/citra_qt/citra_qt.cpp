@@ -125,6 +125,7 @@
 #include "core/zeste_automation.h"
 #include "core/zeste_keyboard.h"
 #include "core/zeste_net.h"
+#include "core/rpc/udp_server.h"
 #include "core/zeste_summary.h"
 #include "core/zeste_core.h"
 #include "common/zeste_crash.h"
@@ -610,6 +611,19 @@ GMainWindow::GMainWindow(Core::System& system_)
                 exit(1);
             }
             game_path = installed;
+            continue;
+        }
+        if (args[i] == QStringLiteral("--rpc-port") && i + 1 < args.size()) {
+            // Implies --rpc. 0 = a free port, printed on stdout ("Zeste RPC port: N").
+            bool ok = false;
+            const uint port = args[++i].toUInt(&ok);
+            if (!ok || port > 65535) {
+                ShowCommandOutput("Zeste", "--rpc-port takes a port number (0 = a free one)");
+                exit(1);
+            }
+            Core::RPC::SetUdpPort(static_cast<u16>(port));
+            Settings::values.enable_rpc_server = true;
+            QtConfig::zeste_command_line_override = true;
             continue;
         }
         if (args[i] == QStringLiteral("--rpc")) {
