@@ -33,6 +33,9 @@ public:
                  boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), g_requested_port)),
           new_request_callback(std::move(new_request_callback)) {
         g_bound_port = socket.local_endpoint().port();
+        // A save state load restarts the RPC server: keep the port --rpc-port 0 picked, so
+        // clients keep reaching it.
+        g_requested_port = g_bound_port;
 
         EnsureBufferSize<boost::asio::socket_base::send_buffer_size>(MAX_PACKET_SIZE * 2);
         EnsureBufferSize<boost::asio::socket_base::receive_buffer_size>(MAX_PACKET_SIZE * 4);

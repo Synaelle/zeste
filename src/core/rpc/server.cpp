@@ -19,10 +19,15 @@ Server::Server(Core::System& system_) : rpc_server{system_} {
 
     try {
         udp_server = std::make_unique<UDPServer>(callback);
-        // Printed so scripts using --rpc-port 0 learn the port.
+        // Printed (once: a save state load restarts the server on the same port) so scripts
+        // using --rpc-port 0 learn the port.
         LOG_INFO(RPC_Server, "RPC server listening on UDP port {}", BoundUdpPort());
-        std::cout << "Zeste RPC port: " << BoundUdpPort() << std::endl;
-        Zeste::Run::Note("rpc port", std::to_string(BoundUdpPort()));
+        static bool announced = false;
+        if (!announced) {
+            announced = true;
+            std::cout << "Zeste RPC port: " << BoundUdpPort() << std::endl;
+            Zeste::Run::Note("rpc port", std::to_string(BoundUdpPort()));
+        }
     } catch (...) {
         LOG_ERROR(RPC_Server, "Error starting UDP server");
         std::cout << "Zeste RPC: could not start the server (port in use?)" << std::endl;
