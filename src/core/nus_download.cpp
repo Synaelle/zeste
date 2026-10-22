@@ -6,11 +6,16 @@
 #include <httplib.h>
 #include "common/logging/log.h"
 #include "core/nus_download.h"
+#include "core/zeste_net.h"
 
 namespace Core::NUS {
 
 std::optional<std::vector<u8>> Download(const std::string& path) {
     constexpr auto HOST = "http://nus.cdn.c.shop.nintendowifi.net";
+    // Zeste: never downloads from Nintendo's servers.
+    if (Zeste::Net::CheckBlocked("nus.cdn.c.shop.nintendowifi.net", "title download")) {
+        return {};
+    }
 
     std::unique_ptr<httplib::Client> client = std::make_unique<httplib::Client>(HOST);
     if (client == nullptr) {

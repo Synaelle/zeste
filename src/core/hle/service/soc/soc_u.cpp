@@ -19,6 +19,7 @@
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/result.h"
 #include "core/hle/service/soc/soc_u.h"
+#include "core/zeste_net.h"
 #include "network/socket_manager.h"
 
 #ifdef _WIN32
@@ -1735,14 +1736,22 @@ void SOC_U::GetHostByName(Kernel::HLERequestContext& ctx) {
     [[maybe_unused]] u32 out_buf_len = rp.Pop<u32>();
     auto host_name = rp.PopStaticBuffer();
 
-    struct hostent* result = ::gethostbyname(reinterpret_cast<char*>(host_name.data()));
+    // Zeste: Nintendo's online services are never resolved: a blocked name fails with the 3DS
+    // "name not known" error, like getaddrinfo does for it.
+    const char* name = reinterpret_cast<char*>(host_name.data());
+    const bool blocked = Zeste::Net::CheckBlocked(name, "DNS lookup");
+    struct hostent* result = blocked ? nullptr : ::gethostbyname(name);
 
-    IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
-    rb.Push(ResultSuccess);
     s32 ret;
     if (!result) {
-        rb.Push(ret = TranslateError(GET_ERRNO));
+        // Zeste: no static buffer on failure (declaring one without data asserted in
+        // WriteToOutgoingCommandBuffer, for any unknown host).
+        IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+        rb.Push(ResultSuccess);
+        rb.Push(ret = blocked ? TranslateGaiError(EAI_NONAME) : TranslateError(GET_ERRNO));
     } else {
+        IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
+        rb.Push(ResultSuccess);
         rb.Push(ret = 0);
         rb.PushStaticBuffer(HostEntToHostByNameData(result), 0);
     }
@@ -2056,7 +2065,9 @@ void SOC_U::GetAddrInfoImpl(Kernel::HLERequestContext& ctx) {
 
     s32 ret = -1;
     addrinfo* out = nullptr;
-    if (hints_size > 0) {
+    if (node_data && Zeste::Net::CheckBlocked(node_data, "DNS lookup")) {
+        ret = EAI_NONAME; // Zeste: Nintendo's online services are never resolved
+    } else if (hints_size > 0) {
         CTRAddrInfo ctr_hints;
         std::memcpy(&ctr_hints, hints_buff.data(), hints_size);
         addrinfo hints = CTRAddrInfo::ToPlatform(ctr_hints);

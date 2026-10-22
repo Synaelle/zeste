@@ -27,6 +27,7 @@
 #include "core/hle/romfs.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/http/http_c.h"
+#include "core/zeste_net.h"
 #include "core/hw/aes/key.h"
 
 SERIALIZE_EXPORT_IMPL(Service::HTTP::HTTP_C)
@@ -397,6 +398,13 @@ void Context::MakeRequest() {
 
     // Apply URL replacements if any
     url_info.host = url_replacer->Apply(url_info.host);
+
+    // Zeste: Nintendo's online services are never reached (fails like an unreachable host).
+    if (Zeste::Net::CheckBlocked(url_info.host, "HTTP request")) {
+        state = RequestState::Completed;
+        FinishTransfer();
+        return;
+    }
 
     request.progress = [this](u64, u64 total) -> bool {
         total_download_size_bytes = total;

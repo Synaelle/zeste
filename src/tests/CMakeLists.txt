@@ -4,6 +4,7 @@ add_executable(tests
     common/param_package.cpp
     common/zeste_report.cpp
     core/core_timing.cpp
+    core/zeste_net.cpp
     core/file_sys/path_parser.cpp
     core/hle/kernel/hle_ipc.cpp
     core/memory/memory.cpp
