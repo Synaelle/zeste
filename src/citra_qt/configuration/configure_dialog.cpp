@@ -55,7 +55,8 @@ ConfigureDialog::ConfigureDialog(QWidget* parent, HotkeyRegistry& registry_, Cor
     ui->tabWidget->addTab(hotkeys_controller_tab.get(), tr("Controller Hotkeys"));
     ui->tabWidget->addTab(hotkeys_tab.get(), tr("Keyboard Hotkeys"));
     ui->tabWidget->addTab(graphics_tab.get(), tr("Graphics"));
-    ui->tabWidget->addTab(enhancements_tab.get(), tr("Enhancements"));
+    // Zeste: no Enhancements tab (filters, upscaling, post-processing hide what the console
+    // shows).
     ui->tabWidget->addTab(layout_tab.get(), tr("Layout"));
     ui->tabWidget->addTab(audio_tab.get(), tr("Audio"));
     ui->tabWidget->addTab(camera_tab.get(), tr("Camera"));
@@ -147,9 +148,9 @@ void ConfigureDialog::PopulateSelectionList() {
     ui->selectorList->clear();
 
     const std::array<std::pair<QString, QList<QWidget*>>, 6> items{
-        {{tr("General"), {general_tab.get(), web_tab.get(), debug_tab.get(), ui_tab.get()}},
+        {{tr("General"), {general_tab.get(), debug_tab.get(), ui_tab.get()}},
          {tr("System"), {system_tab.get(), camera_tab.get(), storage_tab.get()}},
-         {tr("Graphics"), {enhancements_tab.get(), layout_tab.get(), graphics_tab.get()}},
+         {tr("Graphics"), {layout_tab.get(), graphics_tab.get()}},
          {tr("Audio"), {audio_tab.get()}},
          {tr("Controls"), {input_tab.get(), hotkeys_controller_tab.get(), hotkeys_tab.get()}},
          {tr("Zeste"), {zeste_tab.get()}}}};

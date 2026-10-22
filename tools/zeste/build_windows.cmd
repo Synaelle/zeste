@@ -8,7 +8,7 @@ cd /d "%~dp0..\.."
 set CHECK=1
 for %%a in (%*) do if /i "%%a"=="nocheck" set CHECK=0
 for %%a in (%*) do if /i "%%a"=="configure" (
-  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_FFMPEG=OFF -DENABLE_LTO=OFF || exit /b 1
+  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_LTO=OFF -DENABLE_FFMPEG=OFF -DENABLE_VULKAN=OFF -DENABLE_QT_TRANSLATION=OFF -DENABLE_ROOM=OFF -DENABLE_ROOM_STANDALONE=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_LIBUSB=OFF || exit /b 1
 )
 cmake --build build || exit /b 1
 if "%CHECK%"=="1" (

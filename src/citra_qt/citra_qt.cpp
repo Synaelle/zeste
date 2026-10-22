@@ -83,9 +83,6 @@
 #include "citra_qt/qt_swizzle.h"
 #include "citra_qt/uisettings.h"
 #include "common/play_time_manager.h"
-#ifdef ENABLE_QT_UPDATE_CHECKER
-#include "citra_qt/update_checker.h"
-#endif
 #include "citra_qt/util/clickable_label.h"
 #include "citra_qt/util/graphics_device_info.h"
 #include "citra_qt/util/util.h"
@@ -273,23 +270,6 @@ bool IsPrereleaseBuild() {
             (strstr(Common::g_build_fullname, "test") != NULL));
 }
 
-#ifdef ENABLE_QT_UPDATE_CHECKER
-static bool ShouldCheckForPrereleaseUpdates() {
-    const bool update_channel = UISettings::values.update_check_channel.GetValue();
-    const bool using_prerelease_channel =
-        (update_channel == UISettings::UpdateCheckChannels::PRERELEASE);
-    return (IsPrereleaseBuild() || using_prerelease_channel);
-}
-
-static int GetMajorVersion(const std::string& version) {
-    size_t dot = version.find('.');
-    try {
-        return std::stoi(version.substr(0, dot));
-    } catch (...) {
-        return 0;
-    }
-}
-#endif
 
 /// Zeste: status bar look, added after every theme. Items get no frame (the default style draws a
 /// sunken one around each), groups are split by thin dividers, the buttons get a soft hover.
@@ -305,6 +285,20 @@ QPushButton#TogglableStatusBarButton:hover, QPushButton#GraphicsAPIStatusBarButt
     border: none; background-color: rgba(128, 128, 128, 45);
 }
 )");
+}
+
+/// Zeste: menus homebrew testing does not need. Hidden rather than removed, so nothing that
+/// refers to their actions breaks.
+void GMainWindow::ZesteHideUnusedMenus() {
+    ui->menu_Multiplayer->menuAction()->setVisible(false);
+    ui->menu_Movie->menuAction()->setVisible(false);
+    // Screen layouts: Default, Single Screen, Side by Side and Separate Windows stay.
+    for (QAction* action : {ui->action_Screen_Layout_Large_Screen,
+                            ui->action_Screen_Layout_Hybrid_Screen,
+                            ui->action_Screen_Layout_Custom_Layout,
+                            ui->menu_Small_Screen_Position->menuAction()}) {
+        action->setVisible(false);
+    }
 }
 
 static QFrame* ZesteStatusDivider(QWidget* parent) {
@@ -327,7 +321,7 @@ static void MakeHeadless(QWidget* widget) {
 
 GMainWindow::GMainWindow(Core::System& system_)
     : ui{std::make_unique<Ui::MainWindow>()}, system{system_}, movie{system.Movie()},
-      user_data_migrator{this}, config{std::make_unique<QtConfig>()}, emu_thread{nullptr} {
+      config{std::make_unique<QtConfig>()}, emu_thread{nullptr} {
     // Zeste: every process logs into its own run folder (log, report, run.txt), so concurrent
     // instances never rotate, lock or overwrite each other's files.
     {
@@ -559,7 +553,12 @@ GMainWindow::GMainWindow(Core::System& system_)
             } else if (api == QStringLiteral("opengl")) {
                 Settings::values.graphics_api = Settings::GraphicsAPI::OpenGL;
             } else if (api == QStringLiteral("vulkan")) {
+#ifdef ENABLE_VULKAN
                 Settings::values.graphics_api = Settings::GraphicsAPI::Vulkan;
+#else
+                std::cout << "Zeste: Vulkan is not built, using OpenGL" << std::endl;
+                Settings::values.graphics_api = Settings::GraphicsAPI::OpenGL;
+#endif
             } else {
                 ShowCommandOutput("Zeste", "Unknown renderer: " + api.toStdString());
                 exit(1);
@@ -764,6 +763,13 @@ GMainWindow::GMainWindow(Core::System& system_)
     setAcceptDrops(true);
     ui->setupUi(this);
     statusBar()->hide();
+    ZesteHideUnusedMenus();
+#ifndef ENABLE_VULKAN
+    // Zeste: Vulkan is not built; a config from an older version that picked it gets OpenGL.
+    if (Settings::values.graphics_api.GetValue() == Settings::GraphicsAPI::Vulkan) {
+        Settings::values.graphics_api = Settings::GraphicsAPI::OpenGL;
+    }
+#endif
 
     default_theme_paths = QIcon::themeSearchPaths();
     UpdateUITheme();
@@ -860,26 +866,6 @@ GMainWindow::GMainWindow(Core::System& system_)
         ZesteCheckForUpdates(false);
     }
 
-#ifdef ENABLE_QT_UPDATE_CHECKER
-    if (UISettings::values.check_for_update_on_start) {
-        update_future = QtConcurrent::run([]() -> QString {
-            const std::optional<std::string> latest_release_tag =
-                UpdateChecker::GetLatestRelease(ShouldCheckForPrereleaseUpdates());
-
-            if (latest_release_tag && latest_release_tag.value() != Common::g_build_fullname) {
-                const int latest_major_version = GetMajorVersion(latest_release_tag.value());
-                const int current_major_version = GetMajorVersion(Common::g_build_fullname);
-                if (current_major_version <= latest_major_version) {
-                    return QString::fromStdString(latest_release_tag.value());
-                }
-            }
-            return QString{};
-        });
-        QObject::connect(&update_watcher, &QFutureWatcher<QString>::finished, this,
-                         &GMainWindow::OnEmulatorUpdateAvailable);
-        update_watcher.setFuture(update_future);
-    }
-#endif
 
     mouse_hide_timer.setInterval(default_mouse_timeout);
     connect(&mouse_hide_timer, &QTimer::timeout, this, &GMainWindow::HideMouseCursor);
@@ -1042,12 +1028,14 @@ void GMainWindow::InitializeWidgets() {
         volume_popup->setGeometry(QRect(bottomLeft, QSize(rect.width(), rect.height())));
     });
     statusBar()->insertPermanentWidget(1, volume_button);
-    // Zeste: [STRICT VOLUME API] | message ... [speed fps frame] | [multiplayer LED]
+    // Zeste: [STRICT VOLUME API] | message ... [speed fps frame]
     statusBar()->insertPermanentWidget(3, ZesteStatusDivider(this));
 
-    statusBar()->addPermanentWidget(ZesteStatusDivider(this));
+    // Zeste: multiplayer is hidden (local wireless still works through the room code).
     statusBar()->addPermanentWidget(multiplayer_state->GetStatusText());
     statusBar()->addPermanentWidget(multiplayer_state->GetStatusIcon());
+    multiplayer_state->GetStatusText()->hide();
+    multiplayer_state->GetStatusIcon()->hide();
 
     notification_led = new LedWidget();
     notification_led->setToolTip(tr("Emulated notification LED"));
@@ -1484,8 +1472,6 @@ void GMainWindow::ConnectWidgetEvents() {
     connect(this, &GMainWindow::UpdateProgress, this, &GMainWindow::OnUpdateProgress);
     connect(this, &GMainWindow::CIAInstallReport, this, &GMainWindow::OnCIAInstallReport);
     connect(this, &GMainWindow::CIAInstallFinished, this, &GMainWindow::OnCIAInstallFinished);
-    connect(this, &GMainWindow::CompressFinished, this, &GMainWindow::OnCompressFinished);
-    connect(this, &GMainWindow::BundleFinished, this, &GMainWindow::OnBundleFinished);
     connect(this, &GMainWindow::UpdateThemedIcons, multiplayer_state,
             &MultiplayerState::UpdateThemedIcons);
 }
@@ -1627,10 +1613,6 @@ void GMainWindow::ConnectMenuEvents() {
                  [this] { system.DebugUnscheduleAllThreadsFromFrontend(false); });
 
     // Tools
-    connect_menu(ui->action_Compress_ROM_File, &GMainWindow::OnCompressFile);
-    connect_menu(ui->action_Decompress_ROM_File, &GMainWindow::OnDecompressFile);
-    connect_menu(ui->action_Create_ROM_Bundle, &GMainWindow::OnCreateBundle);
-    connect_menu(ui->action_Extract_ROM_Bundle, &GMainWindow::OnExtractBundle);
 
     // Help
     connect_menu(ui->action_Open_Log_Folder, []() {
@@ -2996,52 +2978,6 @@ void GMainWindow::OnCIAInstallReport(Service::AM::InstallStatus status, QString 
     }
 }
 
-void GMainWindow::OnCompressFinished(bool is_compress, bool success) {
-    progress_bar->hide();
-    progress_bar->setValue(0);
-
-    if (!success) {
-        if (is_compress) {
-            QMessageBox::critical(this, tr("Z3DS Compression"),
-                                  tr("Failed to compress some files, check log for details."));
-        } else {
-            QMessageBox::critical(this, tr("Z3DS Compression"),
-                                  tr("Failed to decompress some files, check log for details."));
-        }
-    } else {
-        if (is_compress) {
-            QMessageBox::information(this, tr("Z3DS Compression"),
-                                     tr("All files have been compressed successfully."));
-        } else {
-            QMessageBox::information(this, tr("Z3DS Compression"),
-                                     tr("All files have been decompressed successfully."));
-        }
-    }
-}
-
-void GMainWindow::OnBundleFinished(bool is_bundle, bool success) {
-    progress_bar->hide();
-    progress_bar->setValue(0);
-
-    if (!success) {
-        if (is_bundle) {
-            QMessageBox::critical(this, tr("Bundle File"),
-                                  tr("Failed to create the bundle, check log for details."));
-        } else {
-            QMessageBox::critical(this, tr("Bundle File"),
-                                  tr("Failed to extract the bundle, check log for details."));
-        }
-    } else {
-        if (is_bundle) {
-            QMessageBox::information(this, tr("Bundle File"),
-                                     tr("Bundle has been created successfully."));
-        } else {
-            QMessageBox::information(this, tr("Bundle File"),
-                                     tr("Bundle has been extracted successfully."));
-        }
-    }
-}
-
 void GMainWindow::OnCIAInstallFinished() {
     progress_bar->hide();
     progress_bar->setValue(0);
@@ -3787,334 +3723,6 @@ void GMainWindow::OnDumpVideo() {
 }
 #endif
 
-void GMainWindow::OnCompressFile() {
-    // NOTE: Encrypted files SHOULD NEVER be compressed, otherwise the resulting
-    // compressed file will have very poor compression ratios, due to the high
-    // entropy caused by encryption. This may cause confusion to the user as they
-    // will see the files do not compress well and blame the emulator.
-    //
-    // This is enforced using the loaders as they already return an error on encryption.
-
-    QStringList filepaths = QFileDialog::getOpenFileNames(
-        this, tr("Load 3DS ROM Files"), UISettings::values.roms_path,
-        tr("3DS ROM Files") + QStringLiteral(" (*.cia *.cci *.3dsx *.cxi *.3ds);;") +
-            tr("All Files") + QStringLiteral(" (*.*)"));
-
-    QString out_path;
-
-    if (filepaths.isEmpty()) {
-        return;
-    }
-
-    bool single_file = filepaths.size() == 1;
-    if (single_file) {
-        // If it's a single file, ask the user for the output file.
-        auto compress_info = Loader::GetLoaderFileInfo(filepaths[0].toStdString());
-        if (!compress_info.is_valid || !compress_info.is_compress_supported) {
-            LOG_ERROR(Frontend,
-                      "Error compressing file {}, the selected file is not a compatible 3DS ROM "
-                      "format or is encrypted or bundled.",
-                      filepaths[0].toStdString());
-            emit CompressFinished(true, false);
-            return;
-        }
-        if (compress_info.is_compressed) {
-            LOG_ERROR(Frontend,
-                      "Error compressing file {}, the selected file is already compressed.",
-                      filepaths[0].toStdString());
-            emit CompressFinished(true, false);
-            return;
-        }
-
-        QFileInfo fileinfo(filepaths[0]);
-        QString final_path = fileinfo.path() + QStringLiteral(DIR_SEP) +
-                             fileinfo.completeBaseName() + QStringLiteral(".") +
-                             QString::fromStdString(compress_info.recommended_compressed_extension);
-
-        QString out_filter =
-            tr("3DS Compressed ROM File") + QStringLiteral(" (*.%1)").arg(QString::fromStdString(
-                                                compress_info.recommended_compressed_extension));
-        out_path = QFileDialog::getSaveFileName(this, tr("Save 3DS Compressed ROM File"),
-                                                final_path, out_filter);
-        if (out_path.isEmpty()) {
-            return;
-        }
-    } else {
-        // Otherwise, ask the user the directory to output the files.
-        out_path = QFileDialog::getExistingDirectory(
-            this, tr("Select Output 3DS Compressed ROM Folder"), UISettings::values.roms_path,
-            QFileDialog::ShowDirsOnly);
-        if (out_path.isEmpty()) {
-            return;
-        }
-    }
-
-    (void)QtConcurrent::run([this, filepaths, out_path] {
-        bool single_file = filepaths.size() == 1;
-        QString out_filepath;
-        bool total_success = true;
-
-        for (const QString& filepath : filepaths) {
-
-            std::string in_path = filepath.toStdString();
-
-            // Identify file type
-            auto compress_info = Loader::GetLoaderFileInfo(filepath.toStdString());
-            if (!compress_info.is_valid || !compress_info.is_compress_supported) {
-                LOG_ERROR(
-                    Frontend,
-                    "Error decompressing file {}, the selected file is not a compatible 3DS ROM "
-                    "format or is encrypted or bundled.",
-                    in_path);
-                total_success = false;
-                continue;
-            }
-            if (compress_info.is_compressed) {
-                LOG_ERROR(Frontend,
-                          "Error compressing file {}, the selected file is already compressed.",
-                          in_path);
-                total_success = false;
-                continue;
-            }
-
-            if (single_file) {
-                out_filepath = out_path;
-            } else {
-                QFileInfo fileinfo(filepath);
-                out_filepath =
-                    out_path + QStringLiteral(DIR_SEP) + fileinfo.completeBaseName() +
-                    QStringLiteral(".") +
-                    QString::fromStdString(compress_info.recommended_compressed_extension);
-            }
-
-            std::string out_path = out_filepath.toStdString();
-
-            emit UpdateProgress(0, 0);
-
-            const auto progress = [&](std::size_t written, std::size_t total) {
-                emit UpdateProgress(written, total);
-            };
-            bool success =
-                FileUtil::CompressZ3DSFile(in_path, out_path, compress_info.underlying_magic,
-                                           compress_info.default_compress_frame_size, progress,
-                                           compress_info.default_metadata);
-            if (!success) {
-                total_success = false;
-                FileUtil::Delete(out_path);
-            }
-        }
-
-        emit CompressFinished(true, total_success);
-    });
-}
-
-void GMainWindow::OnDecompressFile() {
-
-    QStringList filepaths = QFileDialog::getOpenFileNames(
-        this, tr("Load 3DS Compressed ROM Files"), UISettings::values.roms_path,
-        tr("3DS Compressed ROM Files") + QStringLiteral(" (*.zcia *zcci *z3dsx *zcxi)") +
-            QStringLiteral(";;") + tr("All Files") + QStringLiteral(" (*.*)"));
-
-    QString out_path;
-
-    if (filepaths.isEmpty()) {
-        return;
-    }
-
-    bool single_file = filepaths.size() == 1;
-    if (single_file) {
-        // If it's a single file, ask the user for the output file.
-        auto compress_info = Loader::GetLoaderFileInfo(filepaths[0].toStdString());
-        if (!compress_info.is_valid || !compress_info.is_compress_supported) {
-            LOG_ERROR(Frontend,
-                      "Error decompressing file {}, the selected file is not a compatible 3DS ROM "
-                      "format.",
-                      filepaths[0].toStdString());
-            emit CompressFinished(false, false);
-            return;
-        }
-        if (!compress_info.is_compressed) {
-            LOG_ERROR(Frontend,
-                      "Error decompressing file {}, the selected file is already decompressed",
-                      filepaths[0].toStdString());
-            emit CompressFinished(false, false);
-            return;
-        }
-
-        QFileInfo fileinfo(filepaths[0]);
-        QString final_path = fileinfo.path() + QStringLiteral(DIR_SEP) +
-                             fileinfo.completeBaseName() + QStringLiteral(".") +
-                             QString::fromStdString(compress_info.recommended_plain_extension);
-
-        QString out_filter = tr("3DS ROM File") +
-                             QStringLiteral(" (*.%1)").arg(
-                                 QString::fromStdString(compress_info.recommended_plain_extension));
-        out_path =
-            QFileDialog::getSaveFileName(this, tr("Save 3DS ROM File"), final_path, out_filter);
-        if (out_path.isEmpty()) {
-            return;
-        }
-    } else {
-        // Otherwise, ask the user the directory to output the files.
-        out_path = QFileDialog::getExistingDirectory(this, tr("Select Output 3DS ROM Folder"),
-                                                     UISettings::values.roms_path,
-                                                     QFileDialog::ShowDirsOnly);
-        if (out_path.isEmpty()) {
-            return;
-        }
-    }
-
-    (void)QtConcurrent::run([this, filepaths, out_path] {
-        bool single_file = filepaths.size() == 1;
-        QString out_filepath;
-        bool total_success = true;
-
-        for (const QString& filepath : filepaths) {
-
-            std::string in_path = filepath.toStdString();
-
-            // Identify file type
-            auto compress_info = Loader::GetLoaderFileInfo(filepath.toStdString());
-            if (!compress_info.is_valid || !compress_info.is_compress_supported) {
-                LOG_ERROR(
-                    Frontend,
-                    "Error decompressing file {}, the selected file is not a compatible 3DS ROM "
-                    "format.",
-                    in_path);
-                total_success = false;
-                continue;
-            }
-            if (!compress_info.is_compressed) {
-                LOG_ERROR(Frontend,
-                          "Error decompressing file {}, the selected file is already decompressed.",
-                          in_path);
-                total_success = false;
-                continue;
-            }
-
-            if (single_file) {
-                out_filepath = out_path;
-            } else {
-                QFileInfo fileinfo(filepath);
-                out_filepath = out_path + QStringLiteral(DIR_SEP) + fileinfo.completeBaseName() +
-                               QStringLiteral(".") +
-                               QString::fromStdString(compress_info.recommended_plain_extension);
-            }
-
-            std::string out_path = out_filepath.toStdString();
-
-            emit UpdateProgress(0, 0);
-
-            const auto progress = [&](std::size_t written, std::size_t total) {
-                emit UpdateProgress(written, total);
-            };
-
-            // TODO(PabloMK7): What should we do with the metadata?
-            bool success = FileUtil::DeCompressZ3DSFile(in_path, out_path, progress);
-            if (!success) {
-                total_success = false;
-                FileUtil::Delete(out_path);
-            }
-        }
-
-        emit CompressFinished(false, total_success);
-    });
-}
-
-void GMainWindow::OnCreateBundle() {
-    QString filepath = QFileDialog::getOpenFileName(
-        this, tr("Load Main 3DS ROM File"), UISettings::values.roms_path,
-        tr("3DS ROM Files") + QStringLiteral(" (*.cci *.zcci *.cia *.zcia *.cxi *.3ds);;") +
-            tr("All Files") + QStringLiteral(" (*.*)"));
-
-    if (filepath.isEmpty()) {
-        return;
-    }
-
-    std::string in_path = filepath.toStdString();
-
-    auto file_info = Loader::GetLoaderFileInfo(filepath.toStdString());
-    if (!file_info.is_valid || !file_info.is_bundle_supported) {
-        LOG_ERROR(Frontend,
-                  "Error bundling file {}, the selected file is not a compatible 3DS ROM "
-                  "format.",
-                  in_path);
-        emit BundleFinished(true, false);
-        return;
-    }
-    if (file_info.is_bundled) {
-        LOG_ERROR(Frontend, "Error bundling file {}, the selected file is already bundled.",
-                  in_path);
-        emit BundleFinished(true, false);
-        return;
-    }
-
-    QFileInfo fileinfo(filepath);
-    QString final_path = fileinfo.path() + QStringLiteral(DIR_SEP) + fileinfo.completeBaseName() +
-                         QStringLiteral(".") +
-                         QString::fromStdString(file_info.recommended_bundle_extension);
-
-    QString out_filter = tr("3DS Bundle ROM File") +
-                         QStringLiteral(" (*.%1)").arg(
-                             QString::fromStdString(file_info.recommended_bundle_extension));
-
-    QString out_path = QFileDialog::getSaveFileName(this, tr("Select Output 3DS Bundled ROM File"),
-                                                    final_path, out_filter);
-    if (out_path.isEmpty()) {
-        return;
-    }
-
-    QStringList depends = QFileDialog::getOpenFileNames(
-        this, tr("Load CIA File Dependencies"), UISettings::values.roms_path,
-        tr("3DS ROM Files") + QStringLiteral(" (*.cia *.zcia);;") + tr("All Files") +
-            QStringLiteral(" (*.*)"));
-
-    if (depends.isEmpty()) {
-        return;
-    }
-
-    std::vector<std::string> depends_vector;
-
-    for (const QString& dep : depends) {
-
-        std::string dep_path = dep.toStdString();
-
-        // Identify file type
-        auto dep_file_info = Loader::GetLoaderFileInfo(dep_path);
-        if (!dep_file_info.is_valid || !dep_file_info.is_bundle_supported ||
-            dep_file_info.is_bundled ||
-            dep_file_info.underlying_magic != std::array<u8, 4>({'C', 'I', 'A', '\0'})) {
-            LOG_ERROR(Frontend,
-                      "Error processing dependency file {}, the selected file is not a compatible "
-                      "CIA file.",
-                      dep_path);
-            emit BundleFinished(true, false);
-            return;
-        }
-
-        depends_vector.push_back(dep_path);
-    }
-
-    emit UpdateProgress(0, 0);
-
-    (void)QtConcurrent::run([this, out_path, in_path, depends_vector] {
-        const auto progress = [&](std::size_t written, std::size_t total) {
-            emit UpdateProgress(written, total);
-        };
-
-        [[maybe_unused]] auto result =
-            Loader::CreateBundleFile(out_path.toStdString(), in_path, depends_vector, progress);
-        emit BundleFinished(true, result == Loader::ResultStatus::Success);
-    });
-}
-
-void GMainWindow::OnExtractBundle() {
-    // TODO(PabloMK7): Implement before 2127 release, do not translate temporary strings.
-    QMessageBox::warning(
-        this, tr("Bundle File"),
-        QStringLiteral("Bundle extraction is not implemented yet, please use a TAR file browser."));
-}
-
 #ifdef ENABLE_FFMPEG
 void GMainWindow::OnStartVideoDumping() {
     DumpingDialog dialog(this, system);
@@ -4784,6 +4392,12 @@ void GMainWindow::UpdateUITheme() {
 
     const QString default_theme_path = icons_base_path + default_theme;
 
+    // Zeste ships two themes: a config naming a removed one gets the system theme.
+    if (std::none_of(UISettings::themes.begin(), UISettings::themes.end(), [](const auto& theme) {
+            return UISettings::values.theme == QString::fromUtf8(theme.second);
+        })) {
+        UISettings::values.theme = default_system_theme;
+    }
     const QString& current_theme = UISettings::values.theme;
     const bool is_default_theme = (current_theme == default_system_theme);
     QStringList theme_paths(default_theme_paths);
@@ -4932,31 +4546,6 @@ void GMainWindow::OnMoviePlaybackCompleted() {
     QMessageBox::information(this, tr("Playback Completed"), tr("Movie playback completed."));
 }
 
-#ifdef ENABLE_QT_UPDATE_CHECKER
-void GMainWindow::OnEmulatorUpdateAvailable() {
-    QString version_string = update_future.result();
-    if (version_string.isEmpty())
-        return;
-
-    QMessageBox update_prompt(this);
-    update_prompt.setWindowTitle(tr("Update Available"));
-    update_prompt.setIcon(QMessageBox::Information);
-    update_prompt.addButton(QMessageBox::Yes);
-    update_prompt.addButton(QMessageBox::Ignore);
-    update_prompt.setText(tr("Update %1 for Azahar is available.\nWould you like to download it?")
-                              .arg(version_string));
-    update_prompt.exec();
-    if (update_prompt.button(QMessageBox::Yes) == update_prompt.clickedButton()) {
-        std::string update_page_url;
-        if (ShouldCheckForPrereleaseUpdates()) {
-            update_page_url = "https://github.com/azahar-emu/azahar/releases";
-        } else {
-            update_page_url = "https://azahar-emu.org/pages/download/";
-        }
-        QDesktopServices::openUrl(QUrl(QString::fromStdString(update_page_url)));
-    }
-}
-#endif
 
 void GMainWindow::ZesteSetStrict(bool enabled) {
     Settings::SetZesteStrictPreset(enabled);
@@ -5403,13 +4992,8 @@ int LaunchQtFrontend(int argc, char* argv[]) {
 
     // Required when using .qrc resources from within a static library.
     // See https://doc.qt.io/qt-5/resources.html#using-resources-in-a-library
-    Q_INIT_RESOURCE(compatibility_list);
-    Q_INIT_RESOURCE(theme_colorful);
-    Q_INIT_RESOURCE(theme_colorful_dark);
-    Q_INIT_RESOURCE(theme_colorful_midnight_blue);
     Q_INIT_RESOURCE(theme_default);
     Q_INIT_RESOURCE(theme_qdarkstyle);
-    Q_INIT_RESOURCE(theme_qdarkstyle_midnight_blue);
 #ifdef ENABLE_QT_TRANSLATION
     Q_INIT_RESOURCE(languages);
 #endif

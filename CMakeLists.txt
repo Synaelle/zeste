@@ -125,14 +125,13 @@ option(USE_SYSTEM_XXHASH "Use the system xxHash lib (instead of the bundled one)
 
 # Set bundled qt as dependent options.
 option(ENABLE_QT "Enable the Qt frontend" ON)
-option(ENABLE_QT_TRANSLATION "Enable translations for the Qt frontend" ON)
-option(ENABLE_QT_UPDATE_CHECKER "Enable built-in update checker for the Qt frontend" OFF)
+option(ENABLE_QT_TRANSLATION "Enable translations for the Qt frontend" OFF) # Zeste: English only
 
 CMAKE_DEPENDENT_OPTION(ENABLE_TESTS "Enable generating tests executable" ON "NOT IOS" OFF)
-CMAKE_DEPENDENT_OPTION(ENABLE_ROOM "Enable dedicated room functionality" ON "NOT ANDROID AND NOT IOS" OFF)
+CMAKE_DEPENDENT_OPTION(ENABLE_ROOM "Enable dedicated room functionality" OFF "NOT ANDROID AND NOT IOS" OFF) # Zeste: no dedicated rooms
 CMAKE_DEPENDENT_OPTION(ENABLE_ROOM_STANDALONE "Enable generating a standalone dedicated room executable" ON "ENABLE_ROOM" OFF)
 
-option(ENABLE_WEB_SERVICE "Enable web services (telemetry, etc.)" ON)
+option(ENABLE_WEB_SERVICE "Enable web services (telemetry, etc.)" OFF) # Zeste: no public lobby
 option(ENABLE_SCRIPTING "Enable RPC server for scripting" ON)
 CMAKE_DEPENDENT_OPTION(ENABLE_SCRIPTING_SYNC "Run scripting RPC requests that access emulated state on the emulation thread, in sync with the core" ON "ENABLE_SCRIPTING" OFF)
 option(ENABLE_GDBSTUB "Enable GDB stub for emulated applications" ON)
@@ -140,14 +139,14 @@ option(ENABLE_GDBSTUB "Enable GDB stub for emulated applications" ON)
 CMAKE_DEPENDENT_OPTION(ENABLE_CUBEB "Enables the cubeb audio backend" ON "NOT IOS" OFF)
 option(ENABLE_OPENAL "Enables the OpenAL audio backend" ON)
 
-CMAKE_DEPENDENT_OPTION(ENABLE_LIBUSB "Enable libusb for GameCube Adapter support" ON "NOT IOS" OFF)
+CMAKE_DEPENDENT_OPTION(ENABLE_LIBUSB "Enable libusb for GameCube Adapter support" OFF "NOT IOS" OFF) # Zeste: no GameCube adapter
 
-CMAKE_DEPENDENT_OPTION(ENABLE_FFMPEG "Enable features which require FFmpeg to function" ON "ENABLE_QT" OFF)
+CMAKE_DEPENDENT_OPTION(ENABLE_FFMPEG "Enable features which require FFmpeg to function" OFF "ENABLE_QT" OFF) # Zeste: no video dumping
 
 CMAKE_DEPENDENT_OPTION(ENABLE_SOFTWARE_RENDERER "Enables the software renderer" ON "NOT ANDROID" OFF)
 CMAKE_DEPENDENT_OPTION(ENABLE_OPENGL "Enables the OpenGL renderer" ${DEFAULT_ENABLE_OPENGL} "NOT APPLE" OFF)
 # NetBSD doesn't support Vulkan yet, remove this check when it does.
-CMAKE_DEPENDENT_OPTION(ENABLE_VULKAN "Enables the Vulkan renderer" ON "NOT (BSD MATCHES \"NetBSD\")" OFF)
+CMAKE_DEPENDENT_OPTION(ENABLE_VULKAN "Enables the Vulkan renderer" OFF "NOT (BSD MATCHES \"NetBSD\")" OFF) # Zeste: OpenGL and software only
 
 option(ENABLE_DISCORD_RPC "Enables Discord Rich Presence" OFF)
 
@@ -313,17 +312,6 @@ endfunction()
 if (EXISTS "${PROJECT_SOURCE_DIR}/.git/objects")
     # only check submodules when source is obtained via Git
     check_submodules_present()
-endif()
-
-configure_file(${PROJECT_SOURCE_DIR}/dist/compatibility_list/compatibility_list.qrc
-               ${PROJECT_BINARY_DIR}/dist/compatibility_list/compatibility_list.qrc
-               COPYONLY)
-if (EXISTS ${PROJECT_SOURCE_DIR}/dist/compatibility_list/compatibility_list.json)
-    file(COPY "${PROJECT_SOURCE_DIR}/dist/compatibility_list/compatibility_list.json"
-        DESTINATION "${PROJECT_BINARY_DIR}/dist/compatibility_list/")
-endif()
-if (NOT EXISTS ${PROJECT_BINARY_DIR}/dist/compatibility_list/compatibility_list.json)
-    file(WRITE ${PROJECT_BINARY_DIR}/dist/compatibility_list/compatibility_list.json "")
 endif()
 
 # Detect current compilation architecture and create standard definitions

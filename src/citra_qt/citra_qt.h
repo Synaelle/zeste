@@ -10,10 +10,6 @@
 #ifdef __unix__
 #include <QDBusObjectPath>
 #endif
-#ifdef ENABLE_QT_UPDATE_CHECKER
-#include <QFuture>
-#include <QFutureWatcher>
-#endif
 #include <QMainWindow>
 #include <QPushButton>
 #include <QString>
@@ -22,7 +18,6 @@
 #include "citra_qt/compatibility_list.h"
 #include "citra_qt/hotkeys.h"
 #include "citra_qt/notification_led.h"
-#include "citra_qt/user_data_migration.h"
 #include "core/core.h"
 #include "core/savestate.h"
 #include "video_core/rasterizer_interface.h"
@@ -156,8 +151,6 @@ signals:
 
     void UpdateProgress(std::size_t written, std::size_t total);
     void CIAInstallReport(Service::AM::InstallStatus status, QString filepath);
-    void CompressFinished(bool is_compress, bool success);
-    void BundleFinished(bool is_bundle, bool success);
     void CIAInstallFinished();
     void InfoLEDColorChanged();
     // Signal that tells widgets to update icons to use the current theme
@@ -272,8 +265,6 @@ private slots:
     void OnMenuBootHomeMenu(u32 region);
     void OnUpdateProgress(std::size_t written, std::size_t total);
     void OnCIAInstallReport(Service::AM::InstallStatus status, QString filepath);
-    void OnCompressFinished(bool is_compress, bool success);
-    void OnBundleFinished(bool is_bundle, bool success);
     void OnCIAInstallFinished();
     void OnMenuRecentFile();
     void OnConfigure();
@@ -308,10 +299,6 @@ private slots:
     void OnCloseMovie();
     void OnSaveMovie();
     void OnCaptureScreenshot();
-    void OnCompressFile();
-    void OnDecompressFile();
-    void OnCreateBundle();
-    void OnExtractBundle();
 #ifdef ENABLE_FFMPEG
     void OnDumpVideo();
     void OnStartVideoDumping();
@@ -337,9 +324,7 @@ private slots:
     void ZesteUpdateStrictUI();
     /// Zeste: playtest report window (only for the titles Zeste::BugReport knows).
     void ZesteOpenPlaytestReport();
-#ifdef ENABLE_QT_UPDATE_CHECKER
-    void OnEmulatorUpdateAvailable();
-#endif
+    void ZesteHideUnusedMenus();
     void OnSwitchDiskResources(VideoCore::LoadCallbackStage stage, std::size_t value,
                                std::size_t total, const std::string& object);
 #ifdef ENABLE_DEVELOPER_OPTIONS
@@ -409,7 +394,6 @@ private:
 
     // Created before `config` to ensure that emu data directory
     // isn't created before the check is performed
-    UserDataMigrator user_data_migrator;
     std::unique_ptr<QtConfig> config;
 
     // Hotkeys
@@ -490,11 +474,6 @@ private:
 
     std::shared_ptr<Camera::QtMultimediaCameraHandlerFactory> qt_cameras;
 
-#ifdef ENABLE_QT_UPDATE_CHECKER
-    // Prompt shown when update check succeeds
-    QFuture<QString> update_future;
-    QFutureWatcher<QString> update_watcher;
-#endif
 
 #ifdef __unix__
     QDBusObjectPath wake_lock{};

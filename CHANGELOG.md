@@ -22,6 +22,15 @@ Every Zeste release, newest first. Releases are on
   0xC0000005 instead of 3). The first quit now wins.
 - HOME Menu: titles without a manual (most homebrew CIAs) no longer get a Manual button. The
   manual's content index was given for every installed title, and the button led to an error.
+- Lighter Zeste, without what homebrew testing never uses:
+  - Removed: the Vulkan renderer (OpenGL and software stay, a config or `--renderer vulkan`
+    from an older version gets OpenGL), translations, `azahar-room.exe`, the public room list
+    and web service, GameCube adapter support, Azahar's compatibility list, four of the six
+    themes (System and Dark stay), the ROM compress / bundle tools, and DLLs nothing loaded
+    (FFmpeg, the DirectX shader compiler, Qt SVG and some Qt plugins).
+  - Hidden: the Multiplayer menu and status, Tools > Movie, the per-game Cheats tab, the
+    Enhancements and Network tabs, the Large Screen, Hybrid and Custom layouts, and OpenAL in
+    the audio outputs.
 
 ## 0.5.1 (2026-10-22)
 

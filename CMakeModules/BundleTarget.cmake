@@ -68,7 +68,11 @@ if (BUNDLE_TARGET_EXECUTE)
             message(STATUS "Executing windeployqt for executable ${executable_path}")
             execute_process(COMMAND "${windeployqt_executable}" "${executable_path}"
                 --qtpaths "${qtpaths_executable}"
-                --no-compiler-runtime --no-system-d3d-compiler --no-opengl-sw --no-translations
+                --no-compiler-runtime --no-system-d3d-compiler --no-system-dxc-compiler
+                --no-opengl-sw --no-translations
+                # Zeste: no SVG/GIF/ICO/JPEG images, touch screens or network status needed.
+                --skip-plugin-types generic,iconengines,networkinformation
+                --exclude-plugins qgif,qico,qjpeg,qsvg,ffmpegmediaplugin
                 --plugindir "${executable_parent_dir}/plugins"
                 RESULT_VARIABLE windeployqt_result)
             if (NOT windeployqt_result EQUAL "0")
@@ -78,6 +82,15 @@ if (BUNDLE_TARGET_EXECUTE)
             # Remove the FFmpeg multimedia plugin as we don't include FFmpeg.
             # We want to use the Windows media plugin instead, which is also included.
             file(REMOVE "${executable_parent_dir}/plugins/multimedia/ffmpegmediaplugin.dll")
+            # Zeste: windeployqt still copies Qt's own FFmpeg libraries and Qt SVG, which nothing
+            # loads once their plugins are gone.
+            file(GLOB zeste_unused_dlls
+                "${executable_parent_dir}/avcodec-*.dll" "${executable_parent_dir}/avformat-*.dll"
+                "${executable_parent_dir}/avutil-*.dll" "${executable_parent_dir}/swresample-*.dll"
+                "${executable_parent_dir}/swscale-*.dll" "${executable_parent_dir}/Qt6Svg.dll")
+            if (zeste_unused_dlls)
+                file(REMOVE ${zeste_unused_dlls})
+            endif()
         elseif (APPLE)
             get_filename_component(executable_name "${executable_path}" NAME_WE)
             find_program(macdeployqt_executable macdeployqt6 PATHS "${QT_HOST_PATH}/bin")

@@ -334,6 +334,12 @@ Settings::GraphicsAPI GetWorkingGraphicsAPI() {
         graphics_api = Settings::GraphicsAPI::Vulkan;
     }
 #endif
+#ifndef ENABLE_VULKAN
+    // Zeste: Vulkan is not built; configs and --renderer vulkan from older versions get OpenGL.
+    if (graphics_api == Settings::GraphicsAPI::Vulkan) {
+        graphics_api = Settings::GraphicsAPI::OpenGL;
+    }
+#endif
     return graphics_api;
 }
 

@@ -23,6 +23,9 @@ ConfigureAudio::ConfigureAudio(bool is_powered_on, QWidget* parent)
     ui->output_type_combo_box->clear();
     ui->output_type_combo_box->addItem(tr("Auto"), QVariant::fromValue(AudioCore::SinkType::Auto));
     for (const auto& sink : AudioCore::ListSinks()) {
+        if (sink.type == AudioCore::SinkType::OpenAL) {
+            continue; // Zeste: hidden, cubeb and SDL2 cover Windows
+        }
         ui->output_type_combo_box->addItem(QString::fromUtf8(sink.name),
                                            QVariant::fromValue(sink.type));
     }
