@@ -86,7 +86,7 @@ struct Values {
     Settings::Setting<bool> show_advanced_frametime_info{
         false, Settings::Keys::show_advanced_frametime_info};
 
-    Settings::Setting<bool> confirm_before_closing{true, Settings::Keys::confirmClose};
+    Settings::Setting<bool> confirm_before_closing{false, Settings::Keys::confirmClose}; // Zeste: off
     Settings::Setting<bool> save_state_warning{true, Settings::Keys::saveStateWarning};
     Settings::Setting<bool> first_start{true, Settings::Keys::firstStart};
     Settings::Setting<bool> pause_when_in_background{false, Settings::Keys::pauseWhenInBackground};
