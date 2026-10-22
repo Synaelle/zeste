@@ -7,14 +7,8 @@
 > [!IMPORTANT]
 > **Homebrew only, New 3DS first.** Commercial games aren't supported: with Zeste's options off
 > they should run much like in Azahar, but turning the options on may break them. Every check is
-> based on New 3DS measurements, and Zeste emulates a New 3DS by default.
-
-> [!WARNING]
-> **The Old 3DS side is experimental.** Zeste can emulate an Old 3DS (Configure > System, New 3DS
-> mode off, or `--console old3ds`), but I don't have an Old 3DS or a 2DS, so nothing in that mode
-> has been checked against the real console. The New 3DS-only parts (the Homebrew Launcher's
-> 124 MB, ZL / ZR / C stick in scripts) are off in that mode. A game can pass there and still fail
-> on an Old 3DS.
+> based on New 3DS measurements, and Zeste emulates a New 3DS by default. Its Old 3DS mode
+> (`--console old3ds`) is experimental and not checked against a real Old 3DS.
 
 > [!TIP]
 > **Any contribution for Old 3DS accuracy is welcome!** Measurements from a real Old 3DS or 2DS
