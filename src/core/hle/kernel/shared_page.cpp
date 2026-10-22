@@ -14,6 +14,7 @@
 #include "core/hle/kernel/shared_page.h"
 #include "core/hle/service/ptm/ptm.h"
 #include "core/movie.h"
+#include "core/zeste_net.h"
 
 SERIALIZE_EXPORT_IMPL(SharedPage::Handler)
 
@@ -91,8 +92,15 @@ Handler::Handler(Core::Timing& timing, u64 override_init_time) : timing(timing) 
     // TODO(PabloMK7)
     // Set wifi state to internet, to fake a connection from the NDM service.
     // Remove once it is figured out how NDM uses AC to connect at console boot.
-    SetWifiLinkLevel(WifiLinkLevel::Best);
-    SetWifiState(WifiState::Internet);
+    // Zeste --offline: Wi-Fi on but not connected (no "Internet" in the HOME Menu, signal 0 for
+    // osGetWifiStrength).
+    if (Zeste::Net::IsOffline()) {
+        SetWifiLinkLevel(WifiLinkLevel::Off);
+        SetWifiState(WifiState::Enabled);
+    } else {
+        SetWifiLinkLevel(WifiLinkLevel::Best);
+        SetWifiState(WifiState::Internet);
+    }
 }
 
 u64 Handler::GetSystemTimeSince2000() const {
