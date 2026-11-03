@@ -5,40 +5,42 @@
 <h1 align="center">Zeste</h1>
 
 > [!IMPORTANT]
-> **Homebrew only, New 3DS first.** Commercial games aren't supported: with Zeste's options off
+> **Homebrew only, New 3DS first.** Commercial games aren't supported. With Zeste's options off
 > they should run much like in Azahar, but turning the options on may break them. Every check is
 > based on New 3DS measurements, and Zeste emulates a New 3DS by default. Its Old 3DS mode
 > (`--console old3ds`) is experimental and not checked against a real Old 3DS.
 
 > [!TIP]
-> **Any contribution for Old 3DS accuracy is welcome!** Measurements from a real Old 3DS or 2DS
-> (test programs run on the console, with their results) are what the Old 3DS side needs most.
+> **Any contribution for Old 3DS accuracy is welcome!** The Old 3DS side mostly needs
+> measurements from a real Old 3DS or 2DS, such as test programs run on the console with their
+> results.
 
 Zeste is a 3DS emulator for testing homebrew, based on
 [Azahar](https://github.com/azahar-emu/azahar). Azahar runs a lot of code that would crash or
 misbehave on a real console. Zeste adds checks that catch those problems on your PC, before you
 try the app on hardware.
 
-When enabled (everything is off by default), it can:
+Everything is off by default. Once enabled, Zeste can
 
-- turn bad memory accesses and stack overflows into real crashes / exception handler calls
-- warn about GPU stuff the real PICA200 doesn't like (NaN vertices, values outside its 24-bit
-  floats, broken textures, buffers it can't reach)
+- turn bad memory accesses and stack overflows into real crashes and exception handler calls
+- warn about GPU work the real PICA200 doesn't like, such as NaN vertices, values outside its
+  24-bit floats, broken textures or buffers it can't reach
 - warn when the CPU cache wasn't flushed before the GPU or DSP reads something
 - give `.3dsx` files the 124 MB they get under the Homebrew Launcher
-- shake up thread scheduling to make races show up (with a seed, so they can be replayed)
+- shake up thread scheduling to make races show up, with a seed so they can be replayed
 - warn about the `std::filesystem::remove_all` pattern, which hangs on hardware
-- run with no window (`--headless`) and be driven by a script or over RPC: inputs,
-  screenshots, memory dumps, GPU command dumps with the vertices of chosen draws,
-  HOME / sleep / close, and text for the game's on-screen keyboard (`keyboard <text>`)
-- make scripted runs faster and steadier: save states (`--load-state`), unlimited speed,
-  waiting for a line in the game's log, quit after N seconds
-- report the game's malloc heap (free memory, largest block) and write a summary of each run
-  (why it ended, the crash with function names when given the `.elf`, the last log lines)
-- profile the CPU: the hottest functions per core and thread, and a flame-graph file
+- warn when the game's malloc heap is nearly full
+- run with no window (`--headless`) and be driven by a script or over RPC, with inputs,
+  screenshots, memory dumps, GPU command dumps, HOME, sleep and close, and text for the game's
+  on-screen keyboard
+- make scripted runs faster and steadier with save states, unlimited speed, waiting for a line
+  in the game's log and quitting after a set time
+- report the game's malloc heap and write a summary of each run, with the crash and its function
+  names when given the `.elf`
+- profile the CPU, with the hottest functions per core and thread and a flame graph file
 - boot a `.cia` straight from the command line
-- boot the HOME Menu headless, as a New or Old 3DS, with a chosen region and country, and
-  optionally no network at all (`--offline`). This needs the system files from your own console
+- boot the HOME Menu headless as a New or Old 3DS, with a chosen region and country, and
+  optionally no network at all (`--offline`), using the system files from your own console
   (File > Set Up System Files)
 - tell you when a new Zeste release is out, in headless runs too (Help > Check for Updates)
 
@@ -52,9 +54,9 @@ options.
 
 ## Downloads
 
-Zeste supports Windows only. Releases are a zip with `zeste.exe` and its DLLs.
-Changes that only affect the Old 3DS side come out as pre-releases (`0.5.0-pre1`, ...). They
-never check for updates, and normal Zeste is never offered them.
+Zeste supports Windows only. Each [release](https://github.com/Synaelle/zeste/releases) is a zip
+with `zeste.exe` and its DLLs. Changes that only affect the Old 3DS side come out as pre-releases
+(`0.5.0-pre1` and so on). They never check for updates, and normal Zeste is never offered them.
 
 Zeste is portable. Everything it writes (settings, the emulated SD card and NAND, logs, run
 reports) goes into a `user` folder next to `zeste.exe`, created on the first start, so the
@@ -68,33 +70,33 @@ Downloads folder). The emulated SD card has deep folders, and Windows refuses pa
 
 ## Building
 
-Needs Visual Studio 2022 (or the Build Tools) with the C++ workload.
+Zeste needs Visual Studio 2022 (or the Build Tools) with the C++ workload.
 
 ```
-git clone --recursive <this repo>
-cd Zeste
+git clone --recursive https://github.com/Synaelle/zeste.git
+cd zeste
 tools\zeste\build_windows.cmd configure
 ```
 
 The exe ends up in `build\bin\Release\zeste.exe`. After the first time, just run
-`tools\zeste\build_windows.cmd`.
+`tools\zeste\build_windows.cmd`. Each build ends with the unit tests.
 
 Linux, macOS and Android aren't supported. Azahar's code for them is still there, so they may
 or may not build, but nothing is tested on them.
 
 ## Changes
 
-Every release and what each one changed: [CHANGELOG.md](CHANGELOG.md).
+[CHANGELOG.md](CHANGELOG.md) lists every release and what it changed.
 
 ## Planned
 
-- Full Linux support: builds and releases for Linux, tested like the Windows ones.
+- Full Linux support, with builds and releases for Linux tested like the Windows ones
 
 ## Contributing
 
-Contributions are welcome: bug reports, fixes, tools for testing homebrew. Anything that changes
-how Zeste emulates the console (a new check, a timing, a memory or GPU behaviour) needs data from
-real hardware first, such as a test program run on a New 3DS with its results. Zeste only models
+Bug reports, fixes and tools for testing homebrew are welcome. Anything that changes how Zeste
+emulates the console (a new check, a timing, a memory or GPU behaviour) needs data from real
+hardware first, such as a test program run on a New 3DS with its results. Zeste only models
 what has been measured on the console, so an accuracy change without hardware data won't be
 merged.
 
