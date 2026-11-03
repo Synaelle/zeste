@@ -1,16 +1,17 @@
-# Zeste build check: the unit tests, then the test ROM (tools/zeste/testrom, kept out of git)
-# headless in strict mode, with the lines its output must contain. Run by build_windows.cmd after
-# every build, or alone:
+# Zeste build check: the unit tests, then the Zeste test ROM headless in strict mode, with the
+# lines its output must contain. Run by build_windows.cmd after every build, or alone:
 #
-#   powershell -ExecutionPolicy Bypass -File tools\zeste\check.ps1 [-Exe path\to\zeste.exe]
+#   powershell -ExecutionPolicy Bypass -File tools\zeste\check.ps1 [-Exe zeste.exe] [-Rom zeste-tests.cia]
+#
+# The test ROM is not in the repository: give it with -Rom or the ZESTE_TEST_ROM environment
+# variable. Without it only the unit tests run.
 
-param([string]$Exe = "")
+param([string]$Exe = "", [string]$Rom = $env:ZESTE_TEST_ROM)
 
 $ErrorActionPreference = "Continue" # native tools write to stderr
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 if (-not $Exe) { $Exe = "$Root\build\bin\Release\zeste.exe" }
 $Tests = Join-Path (Split-Path $Exe) "tests.exe"
-$Rom = "$Root\tools\zeste\testrom\zeste-tests.cia"
 $failed = @()
 
 if (Test-Path $Tests) {
@@ -19,8 +20,8 @@ if (Test-Path $Tests) {
     else { Write-Host ("check: unit tests ok ({0})" -f (($out -split "`n" | Select-String "test cases:") -join "").Trim()) }
 }
 
-if (-not (Test-Path $Rom)) {
-    Write-Host "check: no test ROM ($Rom), skipped" -ForegroundColor Yellow
+if (-not $Rom -or -not (Test-Path $Rom)) {
+    Write-Host "check: no test ROM (-Rom or ZESTE_TEST_ROM), skipped" -ForegroundColor Yellow
 } else {
     # Waits for the line that says the ROM is ready (no guessed frame numbers), then X: a write
     # to NULL, which the ROM's exception handler answers right away with "[X] PASS".

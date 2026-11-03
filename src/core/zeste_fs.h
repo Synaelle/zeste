@@ -3,7 +3,7 @@
 // Refer to the misc/licenses/gplv2.txt file included.
 
 // Zeste file-system checks (zeste_fs_checks): the std::filesystem::remove_all pattern, which
-// never returns on a real New 3DS (openmw3ds AZAHAR_INACCURACIES.md): entries of a directory are
+// never returns on a real New 3DS (seen on hardware): entries of a directory are
 // deleted while a listing of that same directory is still open.
 
 #pragma once

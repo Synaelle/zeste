@@ -50,7 +50,7 @@ void DispatchPending(Core::System& system, Core::ARM_Interface& core);
 bool OnPrefetchAbort(Core::System& system, Core::ARM_Interface& core, VAddr pc);
 
 /// Read-only mappings the exheader asked for (for example "1f000000-1f5fffff:r", VRAM): a CPU
-/// write there is a permission fault on hardware (OpenMW test #71: memcpy into VRAM). Azahar
+/// write there is a permission fault on hardware (seen with a memcpy into VRAM). Azahar
 /// has no write protection, so the pages are routed through the slow path (watchpoint pages) and
 /// writes are checked here. `process_id` scopes the range to one process.
 void AddReadOnlyRange(u32 process_id, VAddr start, u32 size);

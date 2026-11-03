@@ -1,7 +1,8 @@
 # Regression check for --headless: lists the zeste.exe windows Windows considers visible while a
 # headless run is in progress. Expected output: only "exit=0".
 param([string]$Exe = (Join-Path $PSScriptRoot "../../../build/bin/Release/zeste.exe"),
-      [string]$Rom = (Join-Path $PSScriptRoot "../testrom/zeste-tests.3dsx"))
+      [string]$Rom = $env:ZESTE_TEST_ROM)
+if (-not $Rom) { throw "give the test ROM with -Rom or the ZESTE_TEST_ROM environment variable" }
 $Exe = (Resolve-Path $Exe).Path
 $Rom = (Resolve-Path $Rom).Path
 Add-Type @"

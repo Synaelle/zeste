@@ -28,7 +28,7 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DEFAULT_ZESTE = os.path.join(ROOT, "build", "bin", "Release", "zeste.exe")
-DEFAULT_BAGUETTE = r"C:\Projects\baguette\baguette-cli.exe"
+DEFAULT_BAGUETTE = os.environ.get("BAGUETTE_CLI", "baguette-cli")
 
 
 def baguette(args, exe):
@@ -156,7 +156,8 @@ def cmd_compare(a):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("--baguette", default=DEFAULT_BAGUETTE, help="baguette-cli.exe")
+    p.add_argument("--baguette", default=DEFAULT_BAGUETTE,
+                   help="baguette-cli (default: BAGUETTE_CLI, else the one on PATH)")
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("send", help="upload the ROM's CIA to the console (sdmc:/cia)")

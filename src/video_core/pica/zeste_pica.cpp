@@ -415,8 +415,8 @@ void CheckTriangle(const RegsInternal& regs, const OutputVertex& v0, const Outpu
         }
     }
 
-    // Hardware calibration (tools/zeste/calib, ZESTE_GUIDE.md section 13): primitives far outside
-    // the screen draw exactly like float clipping, up to the magnitudes measured. Only vertices
+    // Measured on a New 3DS with a calibration program: primitives far outside the screen draw
+    // exactly like float clipping, up to the magnitudes measured. Only vertices
     // beyond those are reported, as unverified. Vertices outside the depth range are clipped
     // away before rasterization and do not count.
     const auto& r = regs.rasterizer;

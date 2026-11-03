@@ -99,7 +99,7 @@ bool ApplyZesteOptionByName(const std::string& name) {
     } else if (name == "fixed_point_raster" || name == "draw_wrapped" || name == "pica_timing" ||
                name == "cpu_speed_model" || name == "sd_latency" || name == "async_gx") {
         // Retired: the wrap model was disproven on hardware; the timing models rested on guessed
-        // numbers (see ZESTE_CHANGES.md).
+        // numbers, not measurements.
         LOG_WARNING(Common, "Zeste option {} was retired and does nothing", name);
     } else if (name == "cpu_exceptions") {
         values.zeste_cpu_exceptions = true;
