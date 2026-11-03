@@ -21,10 +21,9 @@ namespace Zeste::Update {
 
 namespace {
 
-// GitLab lists releases newest first; pre-releases (vX.Y.Z-preN) are skipped below.
-constexpr char ReleasesApi[] =
-    "https://gitlab.com/api/v4/projects/Synaelle%2Fzeste/releases?per_page=20";
-constexpr char ReleasesPage[] = "https://gitlab.com/Synaelle/zeste/-/releases";
+// The latest published full release: GitHub leaves drafts and pre-releases (vX.Y.Z-preN) out.
+constexpr char ReleasesApi[] = "https://api.github.com/repos/Synaelle/zeste/releases/latest";
+constexpr char ReleasesPage[] = "https://github.com/Synaelle/zeste/releases";
 constexpr std::int64_t CacheSeconds = 6 * 60 * 60;
 
 /// "0.4.1", "v0.4.1" or "0.4.1-3-g3159690" -> {0, 4, 1}; nullopt if it does not start so.
@@ -128,7 +127,7 @@ void Check(QObject* parent, bool force, std::function<void(const Result&)> done)
     QNetworkRequest request{QUrl(QString::fromLatin1(ReleasesApi))};
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("Zeste/%1").arg(QString::fromUtf8(Common::g_zeste_version)));
-    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("Accept", "application/vnd.github+json");
     request.setTransferTimeout(10000);
     QNetworkReply* reply = manager->get(request);
     QObject::connect(reply, &QNetworkReply::finished, manager, [manager, reply, done] {
@@ -140,26 +139,13 @@ void Check(QObject* parent, bool force, std::function<void(const Result&)> done)
             done(Result{.error = reply->errorString()});
             return;
         }
-        // The newest full release (pre-releases are for the Old 3DS side only).
-        QJsonObject json;
-        for (const QJsonValue& value : QJsonDocument::fromJson(reply->readAll()).array()) {
-            const QJsonObject release = value.toObject();
-            if (!release.value(QStringLiteral("tag_name")).toString().contains(
-                    QStringLiteral("-pre")) &&
-                !release.value(QStringLiteral("upcoming_release")).toBool()) {
-                json = release;
-                break;
-            }
-        }
+        const QJsonObject json = QJsonDocument::fromJson(reply->readAll()).object();
         const QString tag = json.value(QStringLiteral("tag_name")).toString();
-        if (tag.isEmpty()) {
-            done(Result{.error = QStringLiteral("unexpected answer from GitLab")});
+        if (tag.isEmpty() || tag.contains(QStringLiteral("-pre"))) {
+            done(Result{.error = QStringLiteral("unexpected answer from GitHub")});
             return;
         }
-        const QString page = json.value(QStringLiteral("_links"))
-                                 .toObject()
-                                 .value(QStringLiteral("self"))
-                                 .toString();
+        const QString page = json.value(QStringLiteral("html_url")).toString();
         const Cache fresh{Now(), tag, page};
         WriteCache(fresh);
         const Result result = Compare(fresh.latest, fresh.url);
