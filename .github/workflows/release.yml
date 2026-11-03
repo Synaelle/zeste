@@ -80,6 +80,8 @@ jobs:
             *) echo "::error::the bundle says '$reported', expected ${VERSION#v}"; exit 1 ;;
           esac
           case "$reported" in *-dev*) echo "::error::development version in a release"; exit 1 ;; esac
+          # zeste.exe is portable: running it created a user folder next to it
+          rm -rf build/bundle/user
       - name: Zip
         shell: pwsh
         run: |
