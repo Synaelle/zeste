@@ -2,6 +2,7 @@ add_executable(tests
     common/bit_field.cpp
     common/file_util.cpp
     common/param_package.cpp
+    common/slot_vector.cpp
     common/zeste_report.cpp
     core/core_timing.cpp
     core/zeste_net.cpp

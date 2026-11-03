@@ -110,6 +110,8 @@ public:
         ErrorSavestateBuildMismatch, ///< Tried to load savestate from a different Azahar version
         ShutdownRequested,           ///< Emulated program requested a system shutdown
         ZesteBreak,                  ///< Zeste: paused on the first hardware-accuracy report
+        ErrorShaderCacheCrash,       ///< The emulator crashed the last time it built the disk
+                                     ///< shader cache
         ErrorUnknown                 ///< Any other error
     };
 
@@ -496,6 +498,10 @@ private:
 
     /// Reschedule the core emulation
     void Reschedule();
+
+    /// Registers the bundle being run, if any, and scans the installed titles in AM. Done at boot
+    /// and after a savestate load, which creates AM again.
+    void LoadAMTitles();
 
     /// AppLoader used to load the current executing application
     std::unique_ptr<Loader::AppLoader> app_loader;
