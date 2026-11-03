@@ -1,0 +1,142 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.ref_name }}
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Release notes from the changelog
+        run: |
+          version="${VERSION#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " v "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          cat notes.md
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$VERSION" in *-pre*) flags="--prerelease" ;; esac
+          gh release create "$VERSION" --draft --verify-tag $flags \
+            --title "Zeste ${VERSION#v}" --notes-file notes.md
+
+  windows:
+    needs: draft
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Ninja
+        run: choco install ninja --no-progress
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_LTO=OFF
+          -DENABLE_FFMPEG=OFF -DENABLE_VULKAN=OFF -DENABLE_QT_TRANSLATION=OFF
+          -DENABLE_ROOM=OFF -DENABLE_ROOM_STANDALONE=OFF -DENABLE_WEB_SERVICE=OFF
+          -DENABLE_LIBUSB=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Unit tests
+        run: ./build/bin/Release/tests.exe
+      - name: Bundle
+        run: cmake --build build --target bundle
+      - name: Check the version
+        run: |
+          reported=$(./build/bundle/zeste.exe --version 2>&1 | tr -d '\r')
+          echo "$reported"
+          case "$reported" in
+            *"${VERSION#v}"*) ;;
+            *) echo "::error::the bundle says '$reported', expected ${VERSION#v}"; exit 1 ;;
+          esac
+          case "$reported" in *-dev*) echo "::error::development version in a release"; exit 1 ;; esac
+      - name: Zip
+        shell: pwsh
+        run: |
+          $name = "Zeste-$($env:VERSION.TrimStart('v'))-windows-x64"
+          New-Item -ItemType Directory -Force "dist-zip/$name" | Out-Null
+          Copy-Item build/bundle/* "dist-zip/$name" -Recurse
+          Copy-Item README.md "dist-zip/$name/README.md"
+          Copy-Item LICENSE.txt "dist-zip/$name/license.txt"
+          Get-ChildItem "dist-zip/$name" -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+          if (Test-Path "dist-zip/$name/user") { throw "the bundle holds a user folder" }
+          Compress-Archive -Path "dist-zip/$name" -DestinationPath "$name.zip"
+          "ZIP=$name.zip" | Out-File -Append $env:GITHUB_ENV
+      - name: Attach to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$VERSION" "$ZIP" --clobber
+
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          case "$VERSION" in
+            *-pre*) gh release edit "$VERSION" --draft=false --prerelease ;;
+            *) gh release edit "$VERSION" --draft=false --latest ;;
+          esac
+      - name: Release on GitLab
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_PROJECT: Synaelle%2Fzeste
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "::warning::no GITLAB_TOKEN secret, GitLab release skipped"
+            exit 0
+          fi
+          gh release download "$VERSION" --pattern "*.zip"
+          gh release view "$VERSION" --json body --jq .body > notes.md
+          zip=$(ls *.zip)
+          api="https://gitlab.com/api/v4/projects/$GITLAB_PROJECT"
+          # The mirror workflow pushes the commit; wait for it before creating the tag there.
+          for i in $(seq 1 30); do
+            if curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$api/repository/commits/$GITHUB_SHA" >/dev/null; then
+              break
+            fi
+            sleep 20
+          done
+          package="$api/packages/generic/zeste/${VERSION#v}/$zip"
+          curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" --upload-file "$zip" "$package"
+          jq -n --arg tag "$VERSION" --arg ref "$GITHUB_SHA" --arg name "Zeste ${VERSION#v}" \
+            --rawfile notes notes.md --arg zip "$zip" --arg url "$package" \
+            '{tag_name: $tag, ref: $ref, name: $name, description: $notes,
+              assets: {links: [{name: $zip, url: $url, link_type: "package"}]}}' > release.json
+          curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -H "Content-Type: application/json" \
+            --data @release.json "$api/releases"

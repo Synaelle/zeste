@@ -1,0 +1,35 @@
+name: mirror
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "**"
+  delete:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  gitlab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Push to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "::warning::no GITLAB_TOKEN secret, mirror skipped"
+            exit 0
+          fi
+          git fetch --prune origin "+refs/heads/*:refs/remotes/origin/*"
+          git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true
+          git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@gitlab.com/Synaelle/zeste.git"
+          git push --force --prune gitlab \
+            "refs/remotes/origin/*:refs/heads/*" "refs/tags/*:refs/tags/*"
