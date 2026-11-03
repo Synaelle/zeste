@@ -5,7 +5,12 @@ Every Zeste release, newest first. Downloads are on the
 
 ## Unreleased
 
+## 0.5.4 (2026-11-03)
+
 - The update check reads the releases on GitHub, where Zeste now lives.
+- Merged Azahar's latest changes, including an optional on-screen software keyboard, a Turbo
+  (Hold) hotkey, a configurable battery state, RPC requests for input and save states, and fixes
+  for the Thumb `ADD PC` instruction, file append mode and DSP sleep.
 
 ## 0.5.3 (2026-10-22)
 
