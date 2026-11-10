@@ -49,48 +49,61 @@ requests for them fail as if there were no route, even with system files from yo
 so a test run can't log in to your account or reach the eShop. Other network access works.
 
 Settings are under Zeste > Hardware accuracy settings. The STRICT button in the status bar
-(or `--strict` on the command line) turns everything on or off. `zeste.exe --help` lists the
+(or `--strict` on the command line) turns everything on or off. `zeste --help` lists the
 options.
 
 ## Downloads
 
-Zeste supports Windows only. Each [release](https://github.com/Synaelle/zeste/releases) is a zip
-with `zeste.exe` and its DLLs. Changes that only affect the Old 3DS side come out as pre-releases
+Zeste is developed and tested on Linux. Each [release](https://github.com/Synaelle/zeste/releases)
+has a Linux AppImage and a Windows zip. The Windows zip is built the same way but nobody tests it
+before a release. Changes that only affect the Old 3DS side come out as pre-releases
 (`0.5.0-pre1` and so on). They never check for updates, and normal Zeste is never offered them.
 
-Zeste is portable. Everything it writes (settings, the emulated SD card and NAND, logs, run
-reports) goes into a `user` folder next to `zeste.exe`, created on the first start, so the
-whole install is that one folder. Only if that folder can't be written (under Program Files,
-for example) does Zeste use `%APPDATA%\Zeste` instead. Versions before 0.4.0 used
-`%APPDATA%\Zeste` by default. To keep that data, move its contents into `user`.
+Each release also has a `SHA256SUMS` file and a GitHub build attestation for every download.
+`gh attestation verify <file> --repo Synaelle/zeste` checks that a file was built by the
+release workflow from this repository.
 
-Keep the Zeste folder in a short path (under about 100 characters, like `C:\Zeste` or your
-Downloads folder). The emulated SD card has deep folders, and Windows refuses paths longer than
-260 characters, so installing a game fails in a folder buried too deep.
+On Linux, make the AppImage executable and run it. It needs a recent distribution (Debian 13,
+Ubuntu 25.04 or newer). Zeste keeps its data (settings, the emulated SD card and NAND, logs, run
+reports) in `~/.local/share/zeste` and `~/.config/zeste`. If a `user` folder exists in the
+folder Zeste is started from, it uses that folder instead, which keeps a test setup apart from
+everything else. Headless runs need no display. Start them with `QT_QPA_PLATFORM=offscreen`
+and `--renderer software` on a machine without a GPU.
+
+On Windows, Zeste is portable. Everything it writes goes into a `user` folder next to
+`zeste.exe`, created on the first start, so the whole install is that one folder. Only if that
+folder can't be written (under Program Files, for example) does Zeste use `%APPDATA%\Zeste`
+instead. Keep the Zeste folder in a short path (under about 100 characters, like `C:\Zeste` or
+your Downloads folder). The emulated SD card has deep folders, and Windows refuses paths longer
+than 260 characters, so installing a game fails in a folder buried too deep.
 
 ## Building
 
-Zeste needs Visual Studio 2022 (or the Build Tools) with the C++ workload.
+On Linux (Ubuntu 26.04 here), install the build tools and Qt 6.
 
 ```
+sudo apt install build-essential cmake ninja-build git pkg-config ccache qt6-base-dev \
+  qt6-base-private-dev qt6-multimedia-dev qt6-tools-dev libgl-dev libegl-dev libx11-dev \
+  libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxss-dev \
+  libxkbcommon-dev libwayland-dev libpulse-dev libasound2-dev libssl-dev
 git clone --recursive https://github.com/Synaelle/zeste.git
 cd zeste
-tools\zeste\build_windows.cmd configure
+tools/zeste/build_linux.sh configure
 ```
 
-The exe ends up in `build\bin\Release\zeste.exe`. After the first time, just run
-`tools\zeste\build_windows.cmd`. Each build ends with the unit tests.
+The binary ends up in `build/bin/Release/zeste`. After the first time, just run
+`tools/zeste/build_linux.sh`. Each build ends with the unit tests.
 
-Linux, macOS and Android aren't supported. Azahar's code for them is still there, so they may
-or may not build, but nothing is tested on them.
+On Windows, Zeste needs Visual Studio 2022 (or the Build Tools) with the C++ workload. Run
+`tools\zeste\build_windows.cmd configure` in the clone, then `tools\zeste\build_windows.cmd`
+after that. The exe ends up in `build\bin\Release\zeste.exe`.
+
+macOS and Android aren't supported. Azahar's code for them is still there, so they may or may
+not build, but nothing is tested on them.
 
 ## Changes
 
 [CHANGELOG.md](CHANGELOG.md) lists every release and what it changed.
-
-## Planned
-
-- Full Linux support, with builds and releases for Linux tested like the Windows ones
 
 ## Contributing
 
