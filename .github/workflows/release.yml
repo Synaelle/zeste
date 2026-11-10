@@ -32,6 +32,12 @@ jobs:
             echo "::error::CHANGELOG.md has no section for $version"
             exit 1
           fi
+          {
+            echo "Zeste is developed and tested on Linux. The Windows zip is built the same way but is not tested."
+            echo
+            cat notes.md
+          } > notes-full.md
+          mv notes-full.md notes.md
           cat notes.md
       - name: Create the draft release
         env:
@@ -92,17 +98,76 @@ jobs:
           Copy-Item LICENSE.txt "dist-zip/$name/license.txt"
           Get-ChildItem "dist-zip/$name" -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
           if (Test-Path "dist-zip/$name/user") { throw "the bundle holds a user folder" }
-          Compress-Archive -Path "dist-zip/$name" -DestinationPath "$name.zip"
-          "ZIP=$name.zip" | Out-File -Append $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force assets | Out-Null
+          Compress-Archive -Path "dist-zip/$name" -DestinationPath "assets/$name.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: assets/
+          if-no-files-found: error
+
+  linux:
+    needs: draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # The image upstream builds its AppImage in (Debian 13, Qt 6.8, clang), pinned so a new
+    # image never changes a release without a commit here.
+    container:
+      image: opensauce04/azahar-build-environment@sha256:b62af13c7c6bf17bb530aa56ce67458f1cfba44379055865af0d12fbd060e2cd
+      options: -u 1001
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_LTO=OFF
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build
+      - name: Unit tests
+        run: ./build/bin/Release/tests
+      - name: Bundle
+        env:
+          # offscreen for headless runs on machines with no display, Wayland next to xcb
+          EXTRA_PLATFORM_PLUGINS: libqoffscreen.so;libqwayland-egl.so;libqwayland-generic.so
+        run: |
+          strip -s build/bin/Release/zeste
+          cmake --build build --target bundle
+      - name: Check the version
+        run: |
+          reported=$(QT_QPA_PLATFORM=offscreen ./build/bundle/zeste.AppImage --appimage-extract-and-run --version 2>&1)
+          echo "$reported"
+          case "$reported" in
+            *"${VERSION#v}"*) ;;
+            *) echo "::error::the AppImage says '$reported', expected ${VERSION#v}"; exit 1 ;;
+          esac
+          case "$reported" in *-dev*) echo "::error::development version in a release"; exit 1 ;; esac
+      - name: Name the AppImage
+        run: |
+          mkdir -p assets
+          cp build/bundle/zeste.AppImage "assets/Zeste-${VERSION#v}-linux-x86_64.AppImage"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: assets/
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
       - name: Attach to the draft
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$VERSION" "$ZIP" --clobber
-
-  publish:
-    needs: windows
-    runs-on: ubuntu-latest
-    steps:
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$VERSION" assets/* --clobber
       - name: Publish on GitHub
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,9 +188,7 @@ jobs:
             echo "::warning::no GITLAB_TOKEN secret, GitLab release skipped"
             exit 0
           fi
-          gh release download "$VERSION" --pattern "*.zip"
           gh release view "$VERSION" --json body --jq .body > notes.md
-          zip=$(ls *.zip)
           api="https://gitlab.com/api/v4/projects/$GITLAB_PROJECT"
           # The mirror workflow pushes the commit; wait for it before creating the tag there.
           for i in $(seq 1 30); do
@@ -134,11 +197,17 @@ jobs:
             fi
             sleep 20
           done
-          package="$api/packages/generic/zeste/${VERSION#v}/$zip"
-          curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" --upload-file "$zip" "$package"
+          packages="$api/packages/generic/zeste/${VERSION#v}"
+          links="[]"
+          for file in assets/*; do
+            name=$(basename "$file")
+            curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" --upload-file "$file" "$packages/$name"
+            links=$(jq -c --arg name "$name" --arg url "$packages/$name" \
+              '. + [{name: $name, url: $url, link_type: "package"}]' <<<"$links")
+          done
           jq -n --arg tag "$VERSION" --arg ref "$GITHUB_SHA" --arg name "Zeste ${VERSION#v}" \
-            --rawfile notes notes.md --arg zip "$zip" --arg url "$package" \
+            --rawfile notes notes.md --argjson links "$links" \
             '{tag_name: $tag, ref: $ref, name: $name, description: $notes,
-              assets: {links: [{name: $zip, url: $url, link_type: "package"}]}}' > release.json
+              assets: {links: $links}}' > release.json
           curl -sf -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -H "Content-Type: application/json" \
             --data @release.json "$api/releases"
