@@ -158,11 +158,23 @@ jobs:
   publish:
     needs: [windows, linux]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: assets
           merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: assets/*
       - name: Attach to the draft
         env:
           GH_TOKEN: ${{ github.token }}
