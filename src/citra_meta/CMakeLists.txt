@@ -11,6 +11,12 @@ if (BSD STREQUAL "NetBSD")
     disable_pax_mprotect(citra_meta)
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Keep the bundled LibreSSL's symbols private. When they are exported, the system OpenSSL
+    # that Qt's TLS plugin loads binds to them and crashes on the first HTTPS request.
+    target_link_options(citra_meta PRIVATE -Wl,--exclude-libs,ALL)
+endif()
+
 if (APPLE)
     set(DIST_DIR "../../dist/apple")
     set(APPLE_RESOURCES
