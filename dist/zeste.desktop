@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Zeste
+GenericName=3DS Emulator
+GenericName[fr]=Émulateur 3DS
+Comment=Nintendo 3DS emulator that reports what real hardware would do differently
+Comment[fr]=Émulateur Nintendo 3DS qui signale ce que la vraie console ferait autrement
+Icon=zeste
+TryExec=zeste
+Exec=zeste %f
+Categories=Game;Emulator;
+MimeType=application/x-ctr-3dsx;application/x-ctr-cci;application/x-ctr-cia;application/x-ctr-cxi;
+Keywords=3DS;Nintendo;

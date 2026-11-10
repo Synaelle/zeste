@@ -130,9 +130,6 @@ if (BUNDLE_TARGET_EXECUTE)
             set(extra_linuxdeploy_args --plugin qt)
         endif()
 
-        # Set up app icon
-        file(COPY_FILE "${source_path}/dist/azahar.svg" "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.svg")
-
         message(STATUS "Creating AppDir for executable ${executable_path}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E env
             ${extra_linuxdeploy_env}
@@ -140,7 +137,7 @@ if (BUNDLE_TARGET_EXECUTE)
             ${extra_linuxdeploy_args}
             --plugin checkrt
             --executable "${executable_path}"
-            --icon-file "${CMAKE_BINARY_DIR}/dist/org.azahar_emu.Azahar.svg"
+            --icon-file "${source_path}/dist/zeste.png"
             --desktop-file "${source_path}/dist/${executable_name}.desktop"
             --appdir "${appdir_path}"
             RESULT_VARIABLE linuxdeploy_appdir_result
@@ -148,9 +145,6 @@ if (BUNDLE_TARGET_EXECUTE)
         if (NOT linuxdeploy_appdir_result EQUAL "0")
             message(FATAL_ERROR "linuxdeploy failed to create AppDir w/ exit code ${linuxdeploy_appdir_result}:\n${linuxdeploy_appdir_error}")
         endif()
-
-        # appimagetool recommends a PNG/XPM .DirIcon (SVG is discouraged).
-        file(COPY_FILE "${source_path}/dist/azahar.png" "${appdir_path}/org.azahar_emu.Azahar.png")
 
         message(STATUS "Creating AppImage for executable ${executable_path}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E env
