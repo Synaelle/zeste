@@ -5,6 +5,11 @@ Every Zeste release, newest first. Downloads are on the
 
 ## Unreleased
 
+- Zeste is now developed and tested on Linux. Each release has a Linux AppImage next to the
+  Windows zip, which is no longer tested.
+- Each release has a `SHA256SUMS` file and GitHub build attestations for its downloads.
+- Fixed a crash on Linux when checking for updates.
+
 ## 0.5.4 (2026-11-03)
 
 - The update check reads the releases on GitHub, where Zeste now lives.
